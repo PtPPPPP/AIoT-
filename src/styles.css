@@ -10,9 +10,16 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
-  min-width: 1180px;
+  min-width: 0;
   min-height: 100vh;
   background:
     radial-gradient(circle at 15% 8%, rgba(20, 184, 166, 0.12), transparent 30%),
@@ -26,6 +33,10 @@ input {
 
 button {
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 .app-shell {
@@ -112,8 +123,22 @@ button {
   font-size: 12px;
 }
 
+.reset-button {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+.debate-reset { background: #b91c1c; border-color: #991b1b; }
+.demo-guide { padding: 14px 20px; }
+.demo-guide ol { display: grid; gap: 8px; margin: 14px 0 0; padding-left: 22px; }
+.demo-guide li { color: #33534e; }
+.demo-guide li span { display: block; margin-top: 3px; color: #64748b; font-size: 13px; }
+
 .main {
   flex: 1;
+  min-width: 0;
   padding: 24px 30px 36px;
 }
 
@@ -172,6 +197,20 @@ button {
   background: #fef3c7;
   color: #b45309;
 }
+
+.status-pill.blue { background: #dbeafe; color: #1d4ed8; }
+.status-pill.muted { background: #e8eef4; color: #475569; }
+
+.notice {
+  margin: -8px 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.notice.good { color: #166534; background: #dcfce7; }
+.notice.danger { color: #991b1b; background: #fee2e2; }
+.loading-panel { min-height: 180px; }
 
 .badge.danger {
   background: #fee2e2;
@@ -249,6 +288,104 @@ button {
   gap: 14px;
 }
 
+.presentation-console {
+  padding: 20px;
+  border-color: rgba(14, 116, 144, 0.28);
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.96), rgba(239, 246, 255, 0.96));
+}
+
+.presentation-summary,
+.scenario-buttons {
+  display: grid;
+  gap: 12px;
+}
+
+.presentation-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.presentation-summary div,
+.seed-control {
+  padding: 12px;
+  border: 1px solid #d9e8e6;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.presentation-summary span,
+.seed-control > span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.presentation-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: #0f3d36;
+  font-size: 14px;
+}
+
+.scenario-buttons {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.scenario-button {
+  min-height: 104px;
+  padding: 13px;
+  border: 1px solid #cfe3e0;
+  border-radius: 8px;
+  color: #31524c;
+  text-align: left;
+  background: white;
+}
+
+.scenario-button strong,
+.scenario-button small {
+  display: block;
+}
+
+.scenario-button small {
+  margin-top: 7px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.scenario-button:hover:not(:disabled),
+.scenario-button.active {
+  border-color: #0f766e;
+  background: #e9fbf6;
+}
+
+.scenario-button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.presentation-actions,
+.seed-control {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.presentation-actions .text-button,
+.seed-control .text-button {
+  padding: 7px 11px;
+}
+
+.seed-control code {
+  padding: 6px 9px;
+  border-radius: 6px;
+  color: #0f3d36;
+  background: #e8eef4;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .metric-grid.compact {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -304,6 +441,7 @@ button {
 .risk-dot.notice { color: #1d4ed8; background: #dbeafe; }
 .risk-dot.warning { color: #b45309; background: #fef3c7; }
 .risk-dot.danger { color: #b91c1c; background: #fee2e2; }
+.risk-dot.muted { color: #475569; background: #e2e8f0; }
 
 .dashboard-columns,
 .ai-layout {
@@ -379,6 +517,25 @@ button {
   background: #d1fae5;
 }
 
+.device-icon.blocked {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.state-pair,
+.blocked-reason,
+.result-meta,
+.occurrence-count {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.blocked-reason {
+  margin: 0;
+  color: #b91c1c;
+}
+
 .summary-strip {
   margin-top: 16px;
 }
@@ -450,6 +607,17 @@ button {
 .control-card {
   min-height: 178px;
   padding: 18px;
+}
+
+.control-card.blocked-card {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.control-statuses {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .control-card h3,
@@ -547,6 +715,16 @@ button {
   display: none;
 }
 
+.image-preview {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  margin: 0 0 18px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #eef2f7;
+}
+
 .primary-button,
 .text-button {
   display: inline-flex;
@@ -563,6 +741,10 @@ button {
   min-height: 46px;
   color: white;
   background: linear-gradient(135deg, #0f766e, #0ea5e9);
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
 }
 
 .text-button {
@@ -634,8 +816,19 @@ button {
 }
 
 .result-score span {
-  font-size: 42px;
+  font-size: 26px;
   font-weight: 900;
+}
+
+.result-detail ul {
+  padding-left: 20px;
+  color: #475569;
+  line-height: 1.8;
+}
+
+.error-state {
+  color: #b91c1c;
+  background: #fff7f7;
 }
 
 .result-score small {
@@ -656,6 +849,11 @@ button {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: white;
+}
+
+.device-offline-row {
+  border-color: #fecaca;
+  background: #fff7f7;
 }
 
 .device-main,
@@ -700,6 +898,45 @@ button {
   gap: 4px;
 }
 
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.native-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 220px;
+}
+
+.chart-axis-label {
+  fill: #64748b;
+  font-size: 11px;
+}
+
+.occurrence-count {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+}
+
 .intro-hero {
   padding: 28px;
   border-radius: 8px;
@@ -733,13 +970,10 @@ button {
 }
 
 @media (max-width: 1280px) {
-  body {
-    min-width: 1024px;
-  }
-
   .metric-grid,
   .control-grid,
-  .rule-grid {
+  .rule-grid,
+  .presentation-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -748,7 +982,7 @@ button {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   body {
     min-width: 0;
   }
@@ -762,6 +996,7 @@ button {
     width: 100%;
     height: auto;
     padding: 16px;
+    overflow: hidden;
   }
 
   .brand {
@@ -778,6 +1013,7 @@ button {
   }
 
   .main {
+    width: 100%;
     padding: 18px 14px 28px;
   }
 
@@ -792,6 +1028,30 @@ button {
 
   .topbar h1 {
     font-size: 24px;
+    overflow-wrap: anywhere;
+  }
+
+  .topbar > div,
+  .hero-panel > div,
+  .section-title > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .topbar p,
+  .hero-panel p,
+  .section-title p {
+    overflow-wrap: anywhere;
+  }
+
+  .topbar-status,
+  .closed-loop {
+    width: 100%;
+  }
+
+  .status-pill {
+    flex: 0 0 auto;
+    white-space: normal;
   }
 
   .hero-panel {
@@ -812,14 +1072,48 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .table,
-  .device-list {
-    overflow-x: auto;
+  .scenario-buttons {
+    grid-template-columns: 1fr;
   }
 
-  .table-row,
-  .alarm-table .table-row {
-    min-width: 760px;
+  .table,
+  .device-list {
+    overflow-x: visible;
+  }
+
+  .responsive-table {
+    border: 0;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .responsive-table .table-head {
+    display: none;
+  }
+
+  .responsive-table .table-row,
+  .responsive-table.alarm-table .table-row {
+    grid-template-columns: 1fr;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+  }
+
+  .responsive-table .table-row > span,
+  .responsive-table .table-row > strong {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.38fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    overflow-wrap: anywhere;
+  }
+
+  .responsive-table .table-row > [data-label]::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
   }
 
   .ai-result {
@@ -828,5 +1122,14 @@ button {
 
   .result-score {
     width: 150px;
+  }
+
+  .device-meta {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .native-chart {
+    min-height: 180px;
   }
 }

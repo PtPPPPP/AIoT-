@@ -26,11 +26,25 @@ type LayoutProps = {
   currentPage: PageKey;
   onNavigate: (page: PageKey) => void;
   children: React.ReactNode;
-  unhandledCount: number;
+  unresolvedCount: number;
   onlineRate: number;
+  lastUpdatedAt: string;
+  persistenceError: string | null;
+  actionMessage: string | null;
+  onReset: () => boolean;
 };
 
-export function Layout({ currentPage, onNavigate, children, unhandledCount, onlineRate }: LayoutProps) {
+export function Layout({
+  currentPage,
+  onNavigate,
+  children,
+  unresolvedCount,
+  onlineRate,
+  lastUpdatedAt,
+  persistenceError,
+  actionMessage,
+  onReset,
+}: LayoutProps) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -59,6 +73,7 @@ export function Layout({ currentPage, onNavigate, children, unhandledCount, onli
           <Leaf size={18} />
           <strong>闭环演示中</strong>
           <span>采集 - 分析 - 执行 - 反馈</span>
+          <button className="reset-button" onClick={onReset}>重置演示数据</button>
         </div>
       </aside>
 
@@ -66,13 +81,20 @@ export function Layout({ currentPage, onNavigate, children, unhandledCount, onli
         <header className="topbar">
           <div>
             <h1>AIoT 智慧温室种植系统</h1>
-            <p>面向设施温室的环境监测、AI识别、异常预警与自动控制原型</p>
+            <p>设施温室前端演示：环境、控制、报警与 AI 适配器</p>
           </div>
           <div className="topbar-status">
+            <span className="status-pill blue">运行模式：答辩仿真</span>
+            <span className="status-pill blue">数据：本地模拟通道</span>
+            <span className="status-pill muted">控制：模拟设备通道</span>
+            <span className="status-pill muted">真实硬件：未接入</span>
             <span className="status-pill good">设备在线率 {onlineRate}%</span>
-            <span className={`status-pill ${unhandledCount > 0 ? 'warn' : 'good'}`}>未处理报警 {unhandledCount}</span>
+            <span className={`status-pill ${unresolvedCount > 0 ? 'warn' : 'good'}`}>未解决报警 {unresolvedCount}</span>
+            <span className="status-pill muted">数据更新 {new Date(lastUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })}</span>
           </div>
         </header>
+        {persistenceError && <div className="notice danger" role="alert">{persistenceError}</div>}
+        {actionMessage && <div className="notice good" role="status">{actionMessage}</div>}
         {children}
       </main>
     </div>

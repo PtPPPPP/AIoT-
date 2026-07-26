@@ -7,9 +7,13 @@ export type PageKey =
   | 'devices'
   | 'intro';
 
-export type RiskLevel = '正常' | '关注' | '中风险' | '高风险';
+export type RiskLevel = '正常' | '关注' | '中风险' | '高风险' | '不可用';
+
+export type SensorKey = 'temperature' | 'humidity' | 'light' | 'soilMoisture' | 'co2';
 
 export type DeviceKind = 'sensor' | 'camera' | 'actuator' | 'gateway';
+
+export type DeviceStateKey = 'waterPump' | 'fan' | 'growLight' | 'shade';
 
 export type Device = {
   id: string;
@@ -18,38 +22,146 @@ export type Device = {
   location: string;
   online: boolean;
   battery?: number;
-  running?: boolean;
   updatedAt: string;
+  sensorKeys?: SensorKey[];
+  actuatorKey?: DeviceStateKey;
 };
-
-export type DeviceStateKey = 'waterPump' | 'fan' | 'growLight' | 'shade';
-
-export type DeviceStates = Record<DeviceStateKey, boolean>;
 
 export type Reading = {
   time: string;
-  temperature: number;
-  humidity: number;
-  light: number;
-  soilMoisture: number;
-  co2: number;
+  capturedAt: string;
+  temperature: number | null;
+  humidity: number | null;
+  light: number | null;
+  soilMoisture: number | null;
+  co2: number | null;
 };
+
+export type SensorState = {
+  sourceId: string;
+  status: 'live' | 'offline';
+  quality: SensorQuality;
+  lastValue: number;
+  lastUpdatedAt: string;
+};
+
+export type SensorQuality = 'good' | 'stale' | 'offline' | 'invalid' | 'error';
+export type ChannelStatus = 'unconfigured' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'stale' | 'partial-offline';
+export type RuntimeMode = 'simulation' | 'external' | 'playback';
+
+export type SensorStates = Record<SensorKey, SensorState>;
+
+export type ActuatorState = {
+  target: boolean;
+  actual: boolean;
+  commandStatus: 'applied' | 'blocked';
+  executionStatus: 'pending' | 'sent' | 'acknowledged' | 'succeeded' | 'failed' | 'timed_out' | 'rejected' | 'cancelled';
+  blockedReason?: string;
+};
+
+export type ActuatorStates = Record<DeviceStateKey, ActuatorState>;
+export type DeviceTargets = Record<DeviceStateKey, boolean>;
+export type ControlMode = 'auto' | 'manual';
+
+export type AlarmLevel = 'info' | 'warning' | 'critical';
+export type AlarmStatus = 'active' | 'acknowledged' | 'resolved';
 
 export type Alarm = {
   id: string;
-  time: string;
   type: string;
-  source: string;
-  level: Exclude<RiskLevel, '正常'>;
-  message: string;
-  handled: boolean;
+  sourceId: string;
+  level: AlarmLevel;
+  title: string;
+  description: string;
+  status: AlarmStatus;
+  firstTriggeredAt: string;
+  lastTriggeredAt: string;
+  occurrenceCount: number;
+  resolvedAt?: string;
+  source?: 'simulation' | 'external';
+  scenario?: PresentationScenarioId;
+  simulationStep?: number;
+  handlingResult?: string;
 };
 
-export type AiResult = {
-  crop: string;
-  growth: string;
-  health: number;
-  disease: string;
-  risk: RiskLevel;
-  suggestion: string;
+export type DemoScenarioId = 'healthy' | 'early-risk' | 'severe-risk';
+
+export type PresentationScenarioId = 'normal' | 'soil-drought' | 'high-heat-co2' | 'sensor-offline' | 'water-pump-failure';
+export type PresentationRunStatus = 'running' | 'paused';
+export type PresentationFault = 'none' | 'soil-sensor-offline' | 'water-pump-offline';
+
+export type PresentationState = {
+  scenarioId: PresentationScenarioId;
+  runStatus: PresentationRunStatus;
+  step: number;
+  seed: string;
+  randomState: number;
+  stage: string;
+  fault: PresentationFault;
+};
+
+export type RecognitionResult = {
+  mode: 'demo' | 'remote';
+  label: string;
+  confidence: number | null;
+  severity: 'info' | 'warning' | 'critical';
+  description: string;
+  recommendations: string[];
+  processingTimeMs: number;
+  contentFingerprint: string;
+};
+
+export interface RecognitionAdapter {
+  recognize(file: File, scenario: DemoScenarioId): Promise<RecognitionResult>;
+}
+
+export type EfficiencyCounters = {
+  sampleCount: number;
+  baselineWaterSeconds: number;
+  actualWaterSeconds: number;
+  baselineEnergyWh: number;
+  actualEnergyWh: number;
+};
+
+export type EfficiencyMetrics = {
+  waterSaving: number | null;
+  energySaving: number | null;
+  explanation: string;
+};
+
+export type SimulatorState = {
+  reading: Reading;
+  history: Reading[];
+  sensors: SensorStates;
+  devices: Device[];
+  actuators: ActuatorStates;
+  manualTargets: DeviceTargets;
+  controlMode: ControlMode;
+  alarms: Alarm[];
+  efficiency: EfficiencyCounters;
+  irrigationCount: number;
+  demoScenario: DemoScenarioId;
+  presentation: PresentationState;
+  runtime: {
+    mode: RuntimeMode;
+    dataChannelStatus: ChannelStatus;
+    controlChannelStatus: ChannelStatus;
+    dataSourceLabel: string;
+    controlSourceLabel: string;
+  };
+  operationLog: OperationLogEntry[];
+  lastUpdatedAt: string;
+};
+
+export type OperationLogEntry = {
+  id: string;
+  at: string;
+  simulationStep: number;
+  type: string;
+  source: 'user' | 'system';
+  target: string;
+  before: string;
+  after: string;
+  result: 'succeeded' | 'failed' | 'rejected';
+  errorCode?: string;
 };

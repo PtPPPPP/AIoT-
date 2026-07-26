@@ -1,23 +1,39 @@
 {
   "name": "aiot-greenhouse-prototype",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node node_modules/vite/bin/vite.js build",
-    "preview": "node node_modules/vite/bin/vite.js preview --host 127.0.0.1"
+    "build": "npm run typecheck && vite build",
+    "build:offline": "npm run typecheck && vite build --mode offline && node scripts/inline-offline.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm run test:run && npm run build",
+    "prepare:release": "npm run build:offline && node scripts/prepare-release.mjs",
+    "test:e2e": "npm run build:offline && playwright test"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "5.2.0",
-    "recharts": "2.12.7",
-    "vite": "5.4.21",
-    "typescript": "5.6.3",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "9.20.0",
+    "@playwright/test": "^1.61.1",
+    "@testing-library/react": "16.1.0",
     "@types/react": "18.3.27",
-    "@types/react-dom": "18.3.7"
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "5.1.0",
+    "eslint-plugin-react-refresh": "0.4.18",
+    "jsdom": "25.0.1",
+    "typescript": "5.6.3",
+    "typescript-eslint": "8.24.0",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
   }
 }

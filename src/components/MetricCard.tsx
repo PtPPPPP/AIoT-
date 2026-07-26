@@ -27,7 +27,8 @@ export function MetricCard({ label, value, unit, hint, risk = '正常', trend = 
   );
 }
 
-export function riskClass(risk: RiskLevel) {
+function riskClass(risk: RiskLevel) {
+  if (risk === '不可用') return 'muted';
   if (risk === '高风险') return 'danger';
   if (risk === '中风险') return 'warning';
   if (risk === '关注') return 'notice';

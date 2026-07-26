@@ -1,133 +1,226 @@
-import { useEffect, useMemo, useState } from 'react';
-import { initialAlarms, initialDevices, initialDeviceStates, initialReading } from '../data/mockData';
-import { Alarm, AiResult, DeviceStateKey, DeviceStates, Reading } from '../types';
-import { decideAutoDevices, newAlarmsFromReading, nextReading } from '../utils/greenhouse';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { DemoRecognitionAdapter } from '../simulator/aiRecognitionAdapter';
+import { calculateEfficiencyMetrics } from '../simulator/metricsEngine';
+import { persistenceKey, restoreState, saveState } from '../simulator/persistence';
+import { simulationIntervalMs } from '../simulator/policy';
+import { createInitialSimulatorState, simulatorReducer } from '../simulator/simulatorReducer';
+import { createSeed } from '../simulator/random';
+import { SimulationClock } from '../simulator/simulationClock';
+import { SimulationDataChannel } from '../channels/data/SimulationDataChannel';
+import { exportDemoSnapshot, parseDemoSnapshot } from '../snapshots/demoSnapshot';
+import { downloadText, exportCsv } from '../utils/exportFile';
+import { DemoScenarioId, DeviceStateKey, PresentationScenarioId, RecognitionResult } from '../types';
 
-const historySeed: Reading[] = Array.from({ length: 14 }, (_, index) => ({
-  ...initialReading,
-  time: `${String(8 + Math.floor(index / 2)).padStart(2, '0')}:${index % 2 ? '30' : '00'}`,
-  temperature: Number((25.5 + Math.sin(index / 2) * 2.7 + index * 0.12).toFixed(1)),
-  humidity: Math.round(67 - index * 0.8 + Math.cos(index) * 2),
-  light: Math.round(12000 + index * 1300 + Math.sin(index) * 1900),
-  soilMoisture: Math.round(47 - index * 0.7 + Math.sin(index / 1.7) * 2),
-  co2: Math.round(690 + index * 18 + Math.cos(index) * 25),
-}));
+const recognitionAdapter = new DemoRecognitionAdapter();
 
-export function useGreenhouseSimulator() {
-  const [reading, setReading] = useState<Reading>(initialReading);
-  const [history, setHistory] = useState<Reading[]>(historySeed);
-  const [devices, setDevices] = useState(initialDevices);
-  const [deviceStates, setDeviceStates] = useState<DeviceStates>(initialDeviceStates);
-  const [autoMode, setAutoMode] = useState(true);
-  const [alarms, setAlarms] = useState<Alarm[]>(initialAlarms);
-  const [aiStage, setAiStage] = useState<'idle' | 'analyzing' | 'done'>('idle');
-  const [aiResult, setAiResult] = useState<AiResult | null>(null);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setReading((current) => {
-        const simulated = nextReading(current, deviceStates);
-        setHistory((items) => [...items.slice(-23), simulated]);
-        setAlarms((items) => mergeAlarms(items, newAlarmsFromReading(simulated)));
-        if (autoMode) {
-          setDeviceStates(decideAutoDevices(simulated));
-        }
-        return simulated;
-      });
-      setDevices((items) =>
-        items.map((device) => ({
-          ...device,
-          updatedAt: device.online ? '刚刚' : device.updatedAt,
-          running: device.id === 'ACT-P-01' ? deviceStates.waterPump : device.id === 'ACT-F-02' ? deviceStates.fan : device.id === 'ACT-L-03' ? deviceStates.growLight : device.running,
-        })),
-      );
-    }, 2600);
-
-    return () => window.clearInterval(timer);
-  }, [autoMode, deviceStates]);
-
-  const stats = useMemo(() => {
-    const unhandled = alarms.filter((alarm) => !alarm.handled).length;
-    return {
-      unhandled,
-      irrigationCount: history.filter((item) => item.soilMoisture < 40).length + (deviceStates.waterPump ? 1 : 0),
-      waterSaving: 31,
-      energySaving: 24,
-      onlineRate: Math.round((devices.filter((device) => device.online).length / devices.length) * 100),
-    };
-  }, [alarms, deviceStates.waterPump, devices, history]);
-
-  const toggleDevice = (key: DeviceStateKey) => {
-    setDeviceStates((current) => ({ ...current, [key]: !current[key] }));
-  };
-
-  const toggleDeviceOnline = (id: string) => {
-    setDevices((items) =>
-      items.map((device) =>
-        device.id === id ? { ...device, online: !device.online, updatedAt: !device.online ? '刚刚' : '离线' } : device,
-      ),
-    );
-  };
-
-  const markAlarmHandled = (id: string) => {
-    setAlarms((items) => items.map((alarm) => (alarm.id === id ? { ...alarm, handled: true } : alarm)));
-  };
-
-  const runAiAnalysis = (sampleName: string) => {
-    setAiStage('analyzing');
-    setAiResult(null);
-    window.setTimeout(() => {
-      const hasRisk = sampleName.includes('病斑');
-      setAiResult({
-        crop: sampleName,
-        growth: hasRisk ? '长势偏弱，叶片局部黄化' : '长势良好，果实膨大稳定',
-        health: hasRisk ? 72 : 91,
-        disease: hasRisk ? '疑似早疫病/营养胁迫' : '未发现明显病害',
-        risk: hasRisk ? '中风险' : '关注',
-        suggestion: hasRisk
-          ? '加强通风，复查叶背病斑，必要时进行定点处理并减少叶面潮湿时间。'
-          : '维持当前滴灌和补光策略，继续监测果实数量与土壤湿度变化。',
-      });
-      setAiStage('done');
-      if (hasRisk) {
-        setAlarms((items) =>
-          mergeAlarms(items, [
-            {
-              id: `ai-${Date.now()}`,
-              time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              type: '病害风险',
-              source: 'CAM-AI-01',
-              level: '中风险',
-              message: 'AI识别到叶片疑似病斑，建议人工复核并调整通风。',
-              handled: false,
-            },
-          ]),
-        );
-      }
-    }, 1600);
-  };
-
-  return {
-    reading,
-    history,
-    devices,
-    deviceStates,
-    autoMode,
-    alarms,
-    aiStage,
-    aiResult,
-    stats,
-    setAutoMode,
-    toggleDevice,
-    toggleDeviceOnline,
-    markAlarmHandled,
-    runAiAnalysis,
-  };
+function initializeState() {
+  const initial = createInitialSimulatorState(new Date().toISOString());
+  try {
+    return restoreState(initial, window.localStorage.getItem(persistenceKey));
+  } catch {
+    return initial;
+  }
 }
 
-function mergeAlarms(current: Alarm[], incoming: Alarm[]) {
-  if (!incoming.length) return current;
-  const existingTypes = new Set(current.filter((alarm) => !alarm.handled).map((alarm) => alarm.type));
-  const fresh = incoming.filter((alarm) => !existingTypes.has(alarm.type));
-  return [...fresh, ...current].slice(0, 18);
+export function useGreenhouseSimulator() {
+  const [state, dispatch] = useReducer(simulatorReducer, undefined, initializeState);
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [aiStage, setAiStage] = useState<'idle' | 'analyzing' | 'done' | 'error'>('idle');
+  const [aiResult, setAiResult] = useState<RecognitionResult | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [isDebateResetting, setIsDebateResetting] = useState(false);
+  const requestId = useRef(0);
+  const clock = useRef<SimulationClock | null>(null);
+  const dataChannel = useRef<SimulationDataChannel | null>(null);
+
+  if (clock.current === null) {
+    clock.current = new SimulationClock(() => {
+      dispatch({ type: 'advance-presentation', now: new Date().toISOString() });
+    }, simulationIntervalMs);
+  }
+  if (dataChannel.current === null) dataChannel.current = new SimulationDataChannel();
+
+  useEffect(() => { void dataChannel.current?.connect(); return () => { void dataChannel.current?.disconnect(); }; }, []);
+  useEffect(() => { dataChannel.current?.publish(state.reading, state.sensors, state.lastUpdatedAt); }, [state.lastUpdatedAt, state.reading, state.sensors]);
+
+  useEffect(() => {
+    if (state.presentation.runStatus === 'running') clock.current?.start();
+    else clock.current?.pause();
+  }, [state.presentation.runStatus]);
+
+  useEffect(() => () => clock.current?.dispose(), []);
+
+  useEffect(() => {
+    const saved = saveState(window.localStorage, state);
+    setPersistenceError(saved ? null : '本地保存失败，本次操作可能在刷新后丢失。');
+  }, [state]);
+
+  const stats = useMemo(() => {
+    const unresolved = state.alarms.filter((alarm) => alarm.status !== 'resolved').length;
+    const efficiency = calculateEfficiencyMetrics(state.efficiency);
+    return {
+      unresolved,
+      irrigationCount: state.irrigationCount,
+      onlineRate: Math.round((state.devices.filter((device) => device.online).length / state.devices.length) * 100),
+      ...efficiency,
+    };
+  }, [state.alarms, state.devices, state.efficiency, state.irrigationCount]);
+
+  const setControlMode = useCallback((mode: 'auto' | 'manual') => {
+    dispatch({ type: 'set-control-mode', mode, now: new Date().toISOString() });
+    setActionMessage(mode === 'auto' ? '已切换为自动控制。' : '已切换为手动控制。');
+  }, []);
+
+  const toggleManualTarget = useCallback((key: DeviceStateKey) => {
+    dispatch({ type: 'toggle-manual-target', key, now: new Date().toISOString() });
+    setActionMessage('手动目标状态已更新，请以“实际状态”为执行结果。');
+  }, []);
+
+  const toggleDeviceOnline = useCallback((id: string) => {
+    dispatch({ type: 'toggle-device-online', id, now: new Date().toISOString() });
+    setActionMessage('设备在线状态已更新，相关数据、控制和报警已同步重算。');
+  }, []);
+
+  const acknowledgeAlarm = useCallback((id: string) => {
+    dispatch({ type: 'acknowledge-alarm', id });
+    setActionMessage('报警已确认；如异常仍持续，状态会保留为“已确认”。');
+  }, []);
+
+  const setDemoScenario = useCallback((scenario: DemoScenarioId) => {
+    dispatch({ type: 'set-demo-scenario', scenario });
+  }, []);
+
+  const pausePresentation = useCallback(() => {
+    clock.current?.pause();
+    dispatch({ type: 'set-presentation-run-status', status: 'paused' });
+    setActionMessage('演示已暂停，环境、控制和报警将保持当前快照。');
+  }, []);
+
+  const resumePresentation = useCallback(() => {
+    dispatch({ type: 'set-presentation-run-status', status: 'running' });
+    setActionMessage('演示已继续，将按固定随机序列推进。');
+  }, []);
+
+  const stepPresentation = useCallback(() => {
+    clock.current?.step();
+    setActionMessage('已单步推进一个完整模拟周期。');
+  }, []);
+
+  const selectPresentationScenario = useCallback((scenarioId: PresentationScenarioId) => {
+    dispatch({ type: 'select-presentation-scenario', scenarioId, seed: state.presentation.seed, now: new Date().toISOString() });
+    setActionMessage('答辩场景已切换，旧场景状态已清理。');
+  }, [state.presentation.seed]);
+
+  const resetPresentationScenario = useCallback(() => {
+    dispatch({ type: 'reset-presentation-scenario', now: new Date().toISOString() });
+    setActionMessage('当前场景已按相同随机种子重置，可稳定复现。');
+  }, []);
+
+  const regeneratePresentationSeed = useCallback(() => {
+    dispatch({ type: 'set-presentation-seed', seed: createSeed(), now: new Date().toISOString() });
+    setActionMessage('已生成新随机种子，并从当前场景起点重新开始。');
+  }, []);
+
+  const copyPresentationSeed = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(state.presentation.seed);
+      setActionMessage('随机种子已复制。');
+    } catch {
+      setActionMessage(`无法自动复制，请手动记录随机种子：${state.presentation.seed}`);
+    }
+  }, [state.presentation.seed]);
+
+  const runRecognition = useCallback(async (file: File, scenario: DemoScenarioId) => {
+    const currentRequest = ++requestId.current;
+    setAiStage('analyzing');
+    setAiResult(null);
+    setAiError(null);
+    try {
+      const result = await recognitionAdapter.recognize(file, scenario);
+      if (currentRequest !== requestId.current) return;
+      setAiResult(result);
+      setAiStage('done');
+      dispatch({ type: 'recognition-completed', result, now: new Date().toISOString() });
+      setActionMessage('演示识别已完成；结果来自人工选定场景，不是真实模型推理。');
+    } catch (error) {
+      if (currentRequest !== requestId.current) return;
+      setAiStage('error');
+      setAiError(error instanceof Error ? error.message : '演示识别失败。');
+    }
+  }, []);
+
+  const resetDemoData = useCallback(() => {
+    if (!window.confirm('确定重置所有演示设置、报警和设备状态吗？此操作不可撤销。')) return false;
+    try {
+      window.localStorage.removeItem(persistenceKey);
+    } catch {
+      setPersistenceError('本地存储无法访问，应用已重置但刷新后可能无法保留。');
+    }
+    dispatch({ type: 'reset', now: new Date().toISOString() });
+    setAiStage('idle');
+    setAiResult(null);
+    setAiError(null);
+    setActionMessage('演示数据已重置。');
+    return true;
+  }, []);
+
+  const debateReset = useCallback(() => {
+    if (isDebateResetting || !window.confirm('确认答辩复位？将回到“正常运行”、固定种子和暂停状态；历史已恢复报警与操作记录会保留。')) return;
+    setIsDebateResetting(true);
+    clock.current?.pause();
+    dispatch({ type: 'debate-reset', now: new Date().toISOString() });
+    setAiStage('idle'); setAiResult(null); setAiError(null);
+    setActionMessage('答辩复位完成：正常运行、暂停、固定种子、设备安全默认状态。');
+    queueMicrotask(() => setIsDebateResetting(false));
+  }, [isDebateResetting]);
+
+  const exportSnapshot = useCallback(() => {
+    downloadText(`温室演示快照-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, exportDemoSnapshot(state), 'application/json;charset=utf-8');
+    setActionMessage('演示快照已导出。');
+  }, [state]);
+
+  const importSnapshot = useCallback(async (file: File) => {
+    try {
+      const snapshot = parseDemoSnapshot(await file.text());
+      clock.current?.pause();
+      dispatch({ type: 'import-snapshot', state: snapshot.state, now: new Date().toISOString() });
+      setActionMessage('演示快照已导入，当前状态已一致恢复。');
+    } catch (error) { setActionMessage(error instanceof Error ? `导入失败：${error.message}` : '导入失败，当前状态未改变。'); }
+  }, []);
+
+  const exportOperationLog = useCallback(() => {
+    if (!state.operationLog.length) { setActionMessage('暂无可导出的操作记录。'); return; }
+    exportCsv(`温室操作记录-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, ['时间', '模拟步数', '操作类型', '操作来源', '目标对象', '操作前状态摘要', '操作后状态摘要', '执行结果', '错误码'], state.operationLog.map((entry) => [entry.at, entry.simulationStep, entry.type, entry.source, entry.target, entry.before, entry.after, entry.result, entry.errorCode ?? '']));
+    setActionMessage('演示操作记录已导出。');
+  }, [state.operationLog]);
+
+  return {
+    ...state,
+    stats,
+    aiStage,
+    aiResult,
+    aiError,
+    persistenceError,
+    actionMessage,
+    setControlMode,
+    toggleManualTarget,
+    toggleDeviceOnline,
+    acknowledgeAlarm,
+    setDemoScenario,
+    runRecognition,
+    resetDemoData,
+    pausePresentation,
+    resumePresentation,
+    stepPresentation,
+    selectPresentationScenario,
+    resetPresentationScenario,
+    regeneratePresentationSeed,
+    copyPresentationSeed,
+    exportSnapshot,
+    importSnapshot,
+    exportOperationLog,
+    debateReset,
+    isDebateResetting,
+  };
 }

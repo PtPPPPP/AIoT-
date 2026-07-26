@@ -1,82 +1,105 @@
-import { Alarm, Device, DeviceStates, Reading } from '../types';
+import {
+  ActuatorStates,
+  Alarm,
+  DemoScenarioId,
+  Device,
+  DeviceTargets,
+  Reading,
+  SensorStates,
+} from '../types';
+
+export const initialTimestamp = '2026-01-01T09:00:00.000Z';
 
 export const initialReading: Reading = {
-  time: '09:00',
+  time: '09:00:00',
+  capturedAt: initialTimestamp,
   temperature: 28.4,
   humidity: 64,
-  light: 18600,
+  light: 18_600,
   soilMoisture: 41,
   co2: 760,
 };
 
-export const initialDeviceStates: DeviceStates = {
+export const initialSensorStates: SensorStates = {
+  temperature: { sourceId: 'SEN-T-01', status: 'live', quality: 'good', lastValue: 28.4, lastUpdatedAt: initialTimestamp },
+  humidity: { sourceId: 'SEN-T-01', status: 'live', quality: 'good', lastValue: 64, lastUpdatedAt: initialTimestamp },
+  light: { sourceId: 'SEN-L-02', status: 'live', quality: 'good', lastValue: 18_600, lastUpdatedAt: initialTimestamp },
+  soilMoisture: { sourceId: 'SEN-S-03', status: 'live', quality: 'good', lastValue: 41, lastUpdatedAt: initialTimestamp },
+  co2: { sourceId: 'SEN-C-04', status: 'live', quality: 'good', lastValue: 760, lastUpdatedAt: initialTimestamp },
+};
+
+export const initialTargets: DeviceTargets = {
   waterPump: false,
-  fan: true,
+  fan: false,
   growLight: false,
   shade: false,
 };
 
+export const initialActuators: ActuatorStates = {
+  waterPump: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
+  fan: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
+  growLight: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
+  shade: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
+};
+
 export const initialDevices: Device[] = [
-  { id: 'SEN-T-01', name: '温湿度传感器', kind: 'sensor', location: 'A区顶部', online: true, battery: 88, updatedAt: '刚刚' },
-  { id: 'SEN-L-02', name: '光照传感器', kind: 'sensor', location: 'A区中部', online: true, battery: 76, updatedAt: '刚刚' },
-  { id: 'SEN-S-03', name: '土壤湿度传感器', kind: 'sensor', location: 'B区苗床', online: true, battery: 82, updatedAt: '1分钟前' },
-  { id: 'SEN-C-04', name: 'CO₂传感器', kind: 'sensor', location: '主通道', online: true, battery: 69, updatedAt: '2分钟前' },
-  { id: 'CAM-AI-01', name: 'AI作物摄像头', kind: 'camera', location: '番茄架上方', online: true, battery: 91, updatedAt: '刚刚' },
-  { id: 'ACT-P-01', name: '滴灌水泵', kind: 'actuator', location: '水肥一体机', online: true, running: false, updatedAt: '刚刚' },
-  { id: 'ACT-F-02', name: '排风风扇', kind: 'actuator', location: '北侧风口', online: true, running: true, updatedAt: '刚刚' },
-  { id: 'ACT-L-03', name: 'LED补光灯', kind: 'actuator', location: 'A区棚顶', online: true, running: false, updatedAt: '3分钟前' },
-  { id: 'GW-01', name: 'LoRa/4G网关', kind: 'gateway', location: '控制柜', online: true, battery: 100, updatedAt: '刚刚' },
+  { id: 'SEN-T-01', name: '温湿度传感器', kind: 'sensor', location: 'A区顶部', online: true, battery: 88, updatedAt: initialTimestamp, sensorKeys: ['temperature', 'humidity'] },
+  { id: 'SEN-L-02', name: '光照传感器', kind: 'sensor', location: 'A区中部', online: true, battery: 76, updatedAt: initialTimestamp, sensorKeys: ['light'] },
+  { id: 'SEN-S-03', name: '土壤湿度传感器', kind: 'sensor', location: 'B区苗床', online: true, battery: 82, updatedAt: initialTimestamp, sensorKeys: ['soilMoisture'] },
+  { id: 'SEN-C-04', name: 'CO₂传感器', kind: 'sensor', location: '主通道', online: true, battery: 69, updatedAt: initialTimestamp, sensorKeys: ['co2'] },
+  { id: 'CAM-AI-01', name: 'AI作物摄像头', kind: 'camera', location: '番茄架上方', online: true, battery: 91, updatedAt: initialTimestamp },
+  { id: 'ACT-P-01', name: '滴灌水泵', kind: 'actuator', location: '水肥一体机', online: true, updatedAt: initialTimestamp, actuatorKey: 'waterPump' },
+  { id: 'ACT-F-02', name: '排风风扇', kind: 'actuator', location: '北侧风口', online: true, updatedAt: initialTimestamp, actuatorKey: 'fan' },
+  { id: 'ACT-L-03', name: 'LED补光灯', kind: 'actuator', location: 'A区棚顶', online: true, updatedAt: initialTimestamp, actuatorKey: 'growLight' },
+  { id: 'ACT-S-04', name: '遮阳设备', kind: 'actuator', location: '棚顶遮阳系统', online: true, updatedAt: initialTimestamp, actuatorKey: 'shade' },
+  { id: 'GW-01', name: 'LoRa/4G网关', kind: 'gateway', location: '控制柜', online: true, battery: 100, updatedAt: initialTimestamp },
 ];
 
 export const initialAlarms: Alarm[] = [
   {
-    id: 'alarm-1',
-    time: '08:42',
-    type: '土壤缺水',
-    source: 'SEN-S-03',
-    level: '中风险',
-    message: 'B区苗床土壤湿度低于 35%，建议开启滴灌水泵。',
-    handled: false,
-  },
-  {
-    id: 'alarm-2',
-    time: '08:15',
-    type: '病害风险',
-    source: 'CAM-AI-01',
-    level: '关注',
-    message: 'AI识别到少量叶片黄化，建议复查叶背和通风情况。',
-    handled: true,
+    id: 'environment-soil-moisture:SEN-S-03',
+    type: 'environment-soil-moisture',
+    sourceId: 'SEN-S-03',
+    level: 'warning',
+    title: '土壤湿度偏低',
+    description: '历史演示报警：B 区苗床曾低于告警阈值，当前已恢复。',
+    status: 'resolved',
+    firstTriggeredAt: '2026-01-01T08:42:00.000Z',
+    lastTriggeredAt: '2026-01-01T08:45:00.000Z',
+    occurrenceCount: 3,
+    resolvedAt: '2026-01-01T08:47:00.000Z',
   },
 ];
 
-export const aiSamples = [
+export const demoScenarios: Array<{
+  id: DemoScenarioId;
+  name: string;
+  description: string;
+  image: string;
+}> = [
   {
-    id: 'green-tomato',
-    name: '温室绿色番茄',
+    id: 'healthy',
+    name: '健康叶片演示',
+    description: '手动选定的健康场景，不是模型判断。',
     image: 'linear-gradient(135deg, #7cc86b, #e2f7c2 48%, #347a4a)',
   },
   {
-    id: 'leaf-risk',
-    name: '叶片疑似病斑',
+    id: 'early-risk',
+    name: '早期病斑演示',
+    description: '手动选定的早期风险场景，用于展示报警闭环。',
     image: 'linear-gradient(135deg, #386b35, #d7b66c 50%, #5e3f24)',
   },
   {
-    id: 'seedling',
-    name: '幼苗长势评估',
-    image: 'linear-gradient(135deg, #d9f99d, #86efac 42%, #0f766e)',
+    id: 'severe-risk',
+    name: '严重病害演示',
+    description: '手动选定的严重风险场景，不代表真实识别结果。',
+    image: 'linear-gradient(135deg, #5f3128, #d97706 48%, #7f1d1d)',
   },
 ];
 
-export const controlRules = [
-  { rule: '土壤湿度低于 36%', action: '自动开启滴灌水泵', target: '补水至 45% 后关闭' },
-  { rule: '温度高于 31°C', action: '自动开启排风风扇', target: '降温并稳定湿度' },
-  { rule: '光照低于 12000 lux', action: '自动开启 LED 补光灯', target: '保障番茄光合作用' },
-  { rule: '光照高于 33000 lux', action: '自动放下遮阳设备', target: '减少灼伤和蒸腾损失' },
-];
-
 export const projectBullets = [
-  '以温室绿色番茄识别和智能估产为核心场景，扩展到环境监测和自动控制。',
-  '采用轻量化视觉模型思路，突出低算力、低成本、可部署到边缘设备的特点。',
-  '融合摄像头、温湿度、光照、土壤湿度、CO₂等多源数据，形成远程可视化管理。',
-  '通过阈值策略和设备执行状态，演示数据采集、AI分析、自动执行、反馈优化闭环。',
+  '已实现：前端可视化、传感器数据模拟、自动控制策略和报警闭环。',
+  '已实现：目标状态与实际状态分离，能演示设备离线和控制失败。',
+  '已实现：AI 演示适配器和明确场景选择，不冒充真实模型推理。',
+  '未实现：真实传感器、MQTT、后端数据库、YOLO/YieldNet 推理和真实控制器。',
 ];

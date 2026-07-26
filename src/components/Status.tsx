@@ -11,13 +11,15 @@ export function Switch({
   checked,
   onChange,
   disabled,
+  label,
 }: {
   checked: boolean;
   onChange: () => void;
   disabled?: boolean;
+  label: string;
 }) {
   return (
-    <button className={`switch ${checked ? 'on' : ''}`} onClick={onChange} disabled={disabled}>
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`switch ${checked ? 'on' : ''}`} onClick={onChange} disabled={disabled}>
       <span />
     </button>
   );
