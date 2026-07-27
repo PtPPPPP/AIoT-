@@ -36,10 +36,10 @@ export const initialTargets: DeviceTargets = {
 };
 
 export const initialActuators: ActuatorStates = {
-  waterPump: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
-  fan: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
-  growLight: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
-  shade: { target: false, actual: false, commandStatus: 'applied', executionStatus: 'succeeded' },
+  waterPump: { target: false, actual: false, actualKnown: true, commandStatus: 'applied', executionStatus: 'succeeded' },
+  fan: { target: false, actual: false, actualKnown: true, commandStatus: 'applied', executionStatus: 'succeeded' },
+  growLight: { target: false, actual: false, actualKnown: true, commandStatus: 'applied', executionStatus: 'succeeded' },
+  shade: { target: false, actual: false, actualKnown: true, commandStatus: 'applied', executionStatus: 'succeeded' },
 };
 
 export const initialDevices: Device[] = [

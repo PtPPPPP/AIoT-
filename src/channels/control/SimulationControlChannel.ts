@@ -5,9 +5,11 @@ import { ControlCommand, ControlResult, DeviceControlChannel } from './types';
 export class SimulationControlChannel implements DeviceControlChannel {
   private status: ChannelStatus = 'connected';
   private results = new Map<string, ControlResult>();
-  async connect() { this.status = 'connected'; }
-  async disconnect() { this.status = 'disconnected'; }
+  private statusListeners = new Set<(status: ChannelStatus) => void>();
+  async connect() { this.setStatus('connected'); }
+  async disconnect() { this.setStatus('disconnected'); }
   getStatus() { return this.status; }
+  subscribeStatus(listener: (status: ChannelStatus) => void) { this.statusListeners.add(listener); return () => this.statusListeners.delete(listener); }
   async execute(command: ControlCommand, deviceOnline: boolean): Promise<ControlResult> {
     return this.executeNow(command, deviceOnline);
   }
@@ -16,4 +18,5 @@ export class SimulationControlChannel implements DeviceControlChannel {
     const result: ControlResult = deviceOnline ? { command: { ...command, sentAt: command.createdAt }, status: 'succeeded', actual: command.target } : { command, status: 'rejected', actual: false, error: '执行器离线，控制指令未执行' };
     this.results.set(command.idempotencyKey, result); return result;
   }
+  private setStatus(status: ChannelStatus) { this.status = status; this.statusListeners.forEach((listener) => listener(status)); }
 }

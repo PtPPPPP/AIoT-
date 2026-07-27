@@ -7,11 +7,14 @@ const units: Record<SensorKey, string> = { temperature: '°C', humidity: '%', li
 export class SimulationDataChannel implements SensorDataChannel {
   private status: ChannelStatus = 'disconnected';
   private listeners = new Set<(packet: SensorPacket) => void>();
+  private statusListeners = new Set<(status: ChannelStatus) => void>();
 
-  async connect() { this.status = 'connected'; }
-  async disconnect() { this.status = 'disconnected'; }
+  async connect() { this.setStatus('connected'); }
+  async disconnect() { this.setStatus('disconnected'); }
   getStatus() { return this.status; }
+  subscribeStatus(listener: (status: ChannelStatus) => void) { this.statusListeners.add(listener); return () => this.statusListeners.delete(listener); }
   subscribe(listener: (packet: SensorPacket) => void) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  private setStatus(status: ChannelStatus) { this.status = status; this.statusListeners.forEach((listener) => listener(status)); }
   publish(reading: Reading, sensors: SensorStates, receivedAt: string) {
     for (const key of Object.keys(sensors) as SensorKey[]) {
       const sensor = sensors[key];

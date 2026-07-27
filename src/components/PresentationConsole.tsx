@@ -1,5 +1,5 @@
 import { presentationScenarios } from '../simulator/presentationScenarios';
-import { PresentationState } from '../types';
+import { PresentationState, RuntimeMode } from '../types';
 import { Badge } from './Status';
 
 type PresentationConsoleProps = {
@@ -16,6 +16,7 @@ type PresentationConsoleProps = {
   onExportOperationLog?: () => void;
   onDebateReset?: () => void;
   isDebateResetting?: boolean;
+  runtimeMode?: RuntimeMode;
 };
 
 export function PresentationConsole({
@@ -32,7 +33,9 @@ export function PresentationConsole({
   onExportOperationLog,
   onDebateReset,
   isDebateResetting = false,
+  runtimeMode = 'simulation',
 }: PresentationConsoleProps) {
+  const simulationAvailable = runtimeMode === 'simulation';
   const current = presentationScenarios.find((scenario) => scenario.id === presentation.scenarioId)!;
   const faultLabel = presentation.fault === 'none'
     ? '无故障注入'
@@ -43,7 +46,7 @@ export function PresentationConsole({
       <div className="section-title">
         <div>
           <h2>答辩场景控制台</h2>
-          <p>场景数据由模拟器统一生成；手动控制仍在“智能控制”页面执行，故障注入由当前场景集中管理。</p>
+          <p>{simulationAvailable ? '场景数据由模拟器统一生成；手动控制仍在“智能控制”页面执行，故障注入由当前场景集中管理。' : '外部模式下，环境数据和设备状态由边缘网关上报，答辩模拟场景不可用。'}</p>
         </div>
         <Badge tone={presentation.runStatus === 'running' ? 'good' : 'warn'}>{presentation.runStatus === 'running' ? '模拟运行中' : '模拟已暂停'}</Badge>
       </div>
@@ -61,7 +64,7 @@ export function PresentationConsole({
             type="button"
             key={scenario.id}
             className={`scenario-button ${presentation.scenarioId === scenario.id ? 'active' : ''}`}
-            disabled={isDebateResetting || presentation.scenarioId === scenario.id}
+            disabled={!simulationAvailable || isDebateResetting || presentation.scenarioId === scenario.id}
             onClick={() => onSelectScenario(scenario.id)}
           >
             <strong>{scenario.name}</strong>
@@ -71,22 +74,22 @@ export function PresentationConsole({
       </div>
 
       <div className="presentation-actions">
-        <button type="button" className="text-button" onClick={onPause} disabled={isDebateResetting || presentation.runStatus === 'paused'}>暂停模拟</button>
-        <button type="button" className="text-button" onClick={onResume} disabled={isDebateResetting || presentation.runStatus === 'running'}>继续模拟</button>
-        <button type="button" className="text-button" onClick={onStep} disabled={isDebateResetting}>单步推进</button>
-        <button type="button" className="text-button" onClick={onReset} disabled={isDebateResetting}>重置当前场景</button>
-        <button type="button" className="reset-button debate-reset" onClick={onDebateReset} disabled={!onDebateReset || isDebateResetting}>{isDebateResetting ? '正在复位…' : '答辩复位'}</button>
+        <button type="button" className="text-button" onClick={onPause} disabled={!simulationAvailable || isDebateResetting || presentation.runStatus === 'paused'}>暂停模拟</button>
+        <button type="button" className="text-button" onClick={onResume} disabled={!simulationAvailable || isDebateResetting || presentation.runStatus === 'running'}>继续模拟</button>
+        <button type="button" className="text-button" onClick={onStep} disabled={!simulationAvailable || isDebateResetting}>单步推进</button>
+        <button type="button" className="text-button" onClick={onReset} disabled={!simulationAvailable || isDebateResetting}>重置当前场景</button>
+        <button type="button" className="reset-button debate-reset" onClick={onDebateReset} disabled={!simulationAvailable || !onDebateReset || isDebateResetting}>{isDebateResetting ? '正在复位…' : '答辩复位'}</button>
       </div>
 
       <div className="seed-control">
         <span>随机种子</span>
         <code>{presentation.seed}</code>
         <button type="button" className="text-button" onClick={() => void onCopySeed()}>复制种子</button>
-        <button type="button" className="text-button" onClick={onRegenerateSeed}>生成新种子</button>
+        <button type="button" className="text-button" onClick={onRegenerateSeed} disabled={!simulationAvailable}>生成新种子</button>
       </div>
       <div className="presentation-actions">
         <button type="button" className="text-button" onClick={onExportSnapshot} disabled={!onExportSnapshot}>导出演示快照</button>
-        <label className="text-button">导入演示快照<input aria-label="导入演示快照" type="file" accept="application/json,.json" hidden disabled={!onImportSnapshot} onChange={(event) => { const file = event.target.files?.[0]; if (file && onImportSnapshot) void onImportSnapshot(file); event.currentTarget.value = ''; }} /></label>
+        <label className="text-button">导入演示快照<input aria-label="导入演示快照" type="file" accept="application/json,.json" hidden disabled={!simulationAvailable || !onImportSnapshot} onChange={(event) => { const file = event.target.files?.[0]; if (file && onImportSnapshot) void onImportSnapshot(file); event.currentTarget.value = ''; }} /></label>
         <button type="button" className="text-button" onClick={onExportOperationLog} disabled={!onExportOperationLog}>导出操作记录</button>
       </div>
     </section>

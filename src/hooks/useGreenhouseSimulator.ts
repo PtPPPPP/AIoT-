@@ -8,6 +8,8 @@ import { createSeed } from '../simulator/random';
 import { SimulationClock } from '../simulator/simulationClock';
 import { createRuntimeChannels, RuntimeChannels } from '../channels/createRuntimeChannels';
 import { SensorPacket } from '../channels/data/types';
+import { EdgeGatewayDataChannel } from '../channels/data/EdgeGatewayDataChannel';
+import { EdgeGatewayControlChannel } from '../channels/control/EdgeGatewayControlChannel';
 import { exportDemoSnapshot, parseDemoSnapshot } from '../snapshots/demoSnapshot';
 import { downloadText, exportCsv } from '../utils/exportFile';
 import { DemoScenarioId, DeviceStateKey, PresentationScenarioId, RecognitionResult } from '../types';
@@ -46,13 +48,26 @@ export function useGreenhouseSimulator() {
   useEffect(() => {
     const runtime = channels.current;
     if (!runtime) return;
-    dispatch({ type: 'set-runtime', runtime: { mode: runtime.mode, dataChannelStatus: runtime.dataChannel.getStatus(), controlChannelStatus: runtime.controlChannel.getStatus(), dataSourceLabel: runtime.dataSourceLabel, controlSourceLabel: runtime.controlSourceLabel } });
+    dispatch({ type: 'set-runtime', runtime: { mode: runtime.mode, dataChannelStatus: runtime.dataChannel.getStatus(), controlChannelStatus: runtime.controlChannel.getStatus(), dataSourceLabel: runtime.dataSourceLabel, controlSourceLabel: runtime.controlSourceLabel, externalInitialSyncStatus: runtime.mode === 'external' ? 'idle' : 'ready', controlArmed: runtime.mode === 'simulation' } });
     const unsubscribe = runtime.mode === 'simulation' ? () => undefined : runtime.dataChannel.subscribe((packet: SensorPacket) => {
       dispatch({ type: 'ingest-sensor-packet', key: packet.key, value: packet.value, quality: packet.quality, capturedAt: packet.capturedAt, sourceId: packet.sensorId });
     });
-    void runtime.dataChannel.connect().finally(() => dispatch({ type: 'set-channel-status', channel: 'data', status: runtime.dataChannel.getStatus() }));
-    void runtime.controlChannel.connect().finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
-    return () => { unsubscribe(); void runtime.dataChannel.disconnect(); void runtime.controlChannel.disconnect(); };
+    const unsubscribeDataStatus = runtime.dataChannel.subscribeStatus((status) => dispatch({ type: 'set-channel-status', channel: 'data', status }));
+    const unsubscribeControlStatus = runtime.controlChannel.subscribeStatus((status) => dispatch({ type: 'set-channel-status', channel: 'control', status }));
+    let cancelled = false;
+    void (async () => {
+      if (runtime.mode === 'external' && runtime.dataChannel instanceof EdgeGatewayDataChannel && runtime.controlChannel instanceof EdgeGatewayControlChannel) {
+        dispatch({ type: 'external-sync-status', status: 'checking_health' });
+        try {
+          const snapshots = await runtime.dataChannel.synchronizeInitialState(); if (cancelled) return;
+          dispatch({ type: 'external-sync-status', status: 'syncing_actuators' });
+          dispatch({ type: 'external-sync-actuators', actuators: snapshots.map((item) => ({ key: item.logicalDevice, actual: item.actual, target: item.target, online: item.online, updatedAt: item.updatedAt })), now: new Date().toISOString() });
+          runtime.controlChannel.markReady(runtime.dataChannel.getStatus()); dispatch({ type: 'external-sync-status', status: 'ready', now: new Date().toISOString() });
+          await runtime.dataChannel.connect();
+        } catch { if (!cancelled) dispatch({ type: 'external-sync-status', status: 'failed' }); }
+      } else { await runtime.dataChannel.connect(); await runtime.controlChannel.connect(); }
+    })();
+    return () => { cancelled = true; unsubscribe(); unsubscribeDataStatus(); unsubscribeControlStatus(); void runtime.dataChannel.disconnect(); void runtime.controlChannel.disconnect(); };
   }, []);
 
   useEffect(() => {
@@ -69,17 +84,18 @@ export function useGreenhouseSimulator() {
     sentTargets.current = current;
     for (const key of Object.keys(current) as DeviceStateKey[]) {
       if (previous?.[key] === current[key] || state.actuators[key].commandStatus === 'blocked') continue;
+      if (runtime.mode === 'external' && (!state.runtime.controlArmed || state.runtime.externalInitialSyncStatus !== 'ready' || !state.actuators[key].actualKnown || state.actuators[key].actual === current[key] || !['connected', 'degraded'].includes(state.runtime.controlChannelStatus))) continue;
       const deviceOnline = state.devices.some((device) => device.actuatorKey === key && device.online);
       const command = { id: `${key}:${state.lastUpdatedAt}`, device: key, target: current[key], source: state.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, createdAt: state.lastUpdatedAt, timeoutAt: new Date(new Date(state.lastUpdatedAt).getTime() + 3_000).toISOString(), scenario: state.presentation.scenarioId, idempotencyKey: `${key}:${current[key]}:${state.controlMode}:${state.lastUpdatedAt}` };
       if (!deviceOnline) { dispatch({ type: 'control-command-result', key, target: current[key], actual: state.actuators[key].actual, status: 'rejected', error: '执行器离线，控制指令未执行' }); continue; }
       void runtime.controlChannel.execute(command, deviceOnline).then((result) => dispatch({ type: 'control-command-result', key, target: current[key], actual: result.actual, status: result.status, ...(result.error ? { error: result.error } : {}) })).finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
     }
-  }, [state.actuators, state.controlMode, state.devices, state.lastUpdatedAt, state.presentation.scenarioId]);
+  }, [state.actuators, state.controlMode, state.devices, state.lastUpdatedAt, state.presentation.scenarioId, state.runtime]);
 
   useEffect(() => {
-    if (state.presentation.runStatus === 'running') clock.current?.start();
+    if (state.runtime.mode === 'simulation' && state.presentation.runStatus === 'running') clock.current?.start();
     else clock.current?.pause();
-  }, [state.presentation.runStatus]);
+  }, [state.presentation.runStatus, state.runtime.mode]);
 
   useEffect(() => () => clock.current?.dispose(), []);
 

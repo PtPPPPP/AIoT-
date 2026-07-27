@@ -63,4 +63,20 @@ describe('simulator snapshot', () => {
     expect(reset.actuators.waterPump).toMatchObject({ target: false, actual: false });
     expect(reset.alarms.every((alarm) => alarm.status === 'resolved')).toBe(true);
   });
+
+  it('does not advance simulation or accept fault injection actions outside simulation mode', () => {
+    let state = createInitialSimulatorState(now);
+    state = simulatorReducer(state, { type: 'set-runtime', runtime: { ...state.runtime, mode: 'external', externalInitialSyncStatus: 'checking_health', controlArmed: false } });
+    const before = structuredClone(state);
+    state = simulatorReducer(state, { type: 'advance-presentation', now: next });
+    state = simulatorReducer(state, { type: 'toggle-device-online', id: 'SEN-S-03', now: next });
+    expect(state).toEqual(before);
+  });
+
+  it('keeps the last known actual state when an external command fails without feedback', () => {
+    let state = createInitialSimulatorState(now);
+    state = simulatorReducer(state, { type: 'control-command-result', key: 'waterPump', target: true, actual: true, status: 'succeeded' });
+    state = simulatorReducer(state, { type: 'control-command-result', key: 'waterPump', target: false, status: 'timed_out', error: '超时' });
+    expect(state.actuators.waterPump).toMatchObject({ target: false, actual: true, actualKnown: true, executionStatus: 'timed_out' });
+  });
 });

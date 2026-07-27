@@ -42,9 +42,11 @@ export type SimulatorAction =
   | { type: 'import-snapshot'; state: SimulatorState; now: string }
   | { type: 'debate-reset'; now: string }
   | { type: 'reset'; now: string }
-  | { type: 'control-command-result'; key: DeviceStateKey; target: boolean; actual: boolean; status: SimulatorState['actuators'][DeviceStateKey]['executionStatus']; error?: string }
+  | { type: 'control-command-result'; key: DeviceStateKey; target: boolean; actual?: boolean; status: SimulatorState['actuators'][DeviceStateKey]['executionStatus']; error?: string }
   | { type: 'set-channel-status'; channel: 'data' | 'control'; status: SimulatorState['runtime']['dataChannelStatus'] }
   | { type: 'set-runtime'; runtime: SimulatorState['runtime'] }
+  | { type: 'external-sync-status'; status: SimulatorState['runtime']['externalInitialSyncStatus']; now?: string }
+  | { type: 'external-sync-actuators'; actuators: Array<{ key: DeviceStateKey; actual?: boolean; target?: boolean; online: boolean; updatedAt: string }>; now: string }
   | { type: 'ingest-sensor-packet'; key: keyof SimulatorState['sensors']; value: number | null; quality: SimulatorState['sensors'][keyof SimulatorState['sensors']]['quality']; capturedAt: string; sourceId: string };
 
 function seedHistory(now: string) {
@@ -86,6 +88,7 @@ export function createInitialSimulatorState(now: string): SimulatorState {
       controlChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
       dataSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '本地回放' : '本地模拟器',
       controlSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关控制通道' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '回放控制禁用' : '模拟设备通道',
+      externalInitialSyncStatus: runtimeConfig.mode === 'external' ? 'idle' : 'ready', controlArmed: runtimeConfig.mode === 'simulation',
     },
     operationLog: [],
     lastUpdatedAt: now,
@@ -117,6 +120,7 @@ export function advanceSimulator(state: SimulatorState, now: string, randomValue
 }
 
 export function advancePresentation(state: SimulatorState, now: string): SimulatorState {
+  if (state.runtime.mode !== 'simulation') return state;
   const prepared = preparePresentationFrame(state, now);
   const random = randomSequence(prepared.presentation.randomState, 5);
   const advanced = advanceSimulator(prepared, now, random.values);
@@ -166,6 +170,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
       return withLog(recalculateControl({ ...state, manualTargets }, action.now), '手动设备控制', action.key, action.now);
     }
     case 'toggle-device-online': {
+      if (state.runtime.mode !== 'simulation') return state;
       const devices = state.devices.map((device) => device.id === action.id
         ? { ...device, online: !device.online, updatedAt: action.now }
         : device);
@@ -189,16 +194,22 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     case 'advance-presentation':
       return advancePresentation(state, action.now);
     case 'set-presentation-run-status':
+      if (state.runtime.mode !== 'simulation') return state;
       return withLog({ ...state, presentation: { ...state.presentation, runStatus: action.status } }, action.status === 'paused' ? '暂停' : '继续', '模拟器', state.lastUpdatedAt);
     case 'select-presentation-scenario':
+      if (state.runtime.mode !== 'simulation') return state;
       return withLog(createScenarioState(action.scenarioId, action.seed, action.now), '场景切换', action.scenarioId, action.now);
     case 'reset-presentation-scenario':
+      if (state.runtime.mode !== 'simulation') return state;
       return withLog(createScenarioState(state.presentation.scenarioId, state.presentation.seed, action.now, state.presentation.runStatus), '场景重置', state.presentation.scenarioId, action.now);
     case 'set-presentation-seed':
+      if (state.runtime.mode !== 'simulation') return state;
       return withLog(createScenarioState(state.presentation.scenarioId, action.seed, action.now, state.presentation.runStatus), '随机种子更新', action.seed, action.now);
     case 'import-snapshot':
+      if (state.runtime.mode !== 'simulation') return state;
       return { ...action.state, operationLog: [...action.state.operationLog, { id: `snapshot-import:${action.now}`, at: action.now, simulationStep: action.state.presentation.step, type: '快照导入', source: 'user' as const, target: '演示快照', before: '当前状态', after: '已恢复快照状态', result: 'succeeded' as const }].slice(-200) };
     case 'debate-reset': {
+      if (state.runtime.mode !== 'simulation') return state;
       const fresh = createScenarioState('normal', 'GREENHOUSE-2026', action.now, 'paused');
       const historicalAlarms = state.alarms.filter((alarm) => alarm.status === 'resolved');
       return withLog({ ...fresh, alarms: historicalAlarms, operationLog: state.operationLog }, '答辩复位', '统一答辩起点', action.now);
@@ -211,13 +222,25 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
       return { ...state, runtime: action.channel === 'data' ? { ...state.runtime, dataChannelStatus: action.status } : { ...state.runtime, controlChannelStatus: action.status } };
     case 'ingest-sensor-packet': {
       const sensor = { ...state.sensors[action.key], sourceId: action.sourceId, quality: action.quality, status: action.quality === 'offline' ? 'offline' : 'live', lastUpdatedAt: action.capturedAt, ...(action.value === null ? {} : { lastValue: action.value }) };
-      return { ...state, sensors: { ...state.sensors, [action.key]: sensor }, reading: { ...state.reading, [action.key]: action.value, capturedAt: action.capturedAt, time: new Date(action.capturedAt).toLocaleTimeString('zh-CN') }, lastUpdatedAt: action.capturedAt };
+      const updated = { ...state, sensors: { ...state.sensors, [action.key]: sensor }, reading: { ...state.reading, [action.key]: action.value, capturedAt: action.capturedAt, time: new Date(action.capturedAt).toLocaleTimeString('zh-CN') }, lastUpdatedAt: action.capturedAt, runtime: { ...state.runtime, lastValidDataAt: action.quality === 'good' && action.value !== null ? action.capturedAt : state.runtime.lastValidDataAt } };
+      return updated.runtime.mode === 'external' ? recalculateControl(updated, action.capturedAt) : updated;
     }
     case 'control-command-result': {
       const previous = state.actuators[action.key];
       const failed = ['failed', 'timed_out', 'rejected', 'cancelled'].includes(action.status);
-      const actuator = { ...previous, target: action.target, actual: action.actual, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, ...(action.error ? { blockedReason: action.error } : {}) };
+      const actuator = { ...previous, target: action.target, actual: action.actual === undefined ? previous.actual : action.actual, actualKnown: action.actual === undefined ? previous.actualKnown : true, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, ...(action.error ? { blockedReason: action.error } : {}) };
       return { ...state, actuators: { ...state.actuators, [action.key]: actuator } };
+    }
+    case 'external-sync-status':
+      return { ...state, runtime: { ...state.runtime, externalInitialSyncStatus: action.status, controlArmed: action.status === 'ready', ...(action.now ? { lastHealthCheckAt: action.now } : {}) } };
+    case 'external-sync-actuators': {
+      const actuators = { ...state.actuators }; const devices = state.devices.map((device) => {
+        const snapshot = action.actuators.find((item) => item.key === device.actuatorKey);
+        if (!snapshot || !device.actuatorKey) return device;
+        actuators[device.actuatorKey] = { ...actuators[device.actuatorKey], target: snapshot.target ?? actuators[device.actuatorKey].target, actual: snapshot.actual ?? actuators[device.actuatorKey].actual, actualKnown: snapshot.actual !== undefined, executionStatus: 'succeeded' };
+        return { ...device, online: snapshot.online, updatedAt: snapshot.updatedAt };
+      });
+      return { ...state, devices, actuators };
     }
   }
 }

@@ -46,7 +46,7 @@ export type SensorState = {
 };
 
 export type SensorQuality = 'good' | 'stale' | 'offline' | 'invalid' | 'error';
-export type ChannelStatus = 'unconfigured' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'stale' | 'partial-offline';
+export type ChannelStatus = 'unconfigured' | 'connecting' | 'connected' | 'degraded' | 'disconnected' | 'failed' | 'stale' | 'partial-offline';
 export type RuntimeMode = 'simulation' | 'external' | 'playback';
 
 export type SensorStates = Record<SensorKey, SensorState>;
@@ -54,6 +54,7 @@ export type SensorStates = Record<SensorKey, SensorState>;
 export type ActuatorState = {
   target: boolean;
   actual: boolean;
+  actualKnown: boolean;
   commandStatus: 'applied' | 'blocked';
   executionStatus: 'pending' | 'sent' | 'acknowledged' | 'succeeded' | 'failed' | 'timed_out' | 'rejected' | 'cancelled';
   blockedReason?: string;
@@ -148,6 +149,10 @@ export type SimulatorState = {
     controlChannelStatus: ChannelStatus;
     dataSourceLabel: string;
     controlSourceLabel: string;
+    externalInitialSyncStatus: 'idle' | 'checking_health' | 'syncing_actuators' | 'ready' | 'failed';
+    controlArmed: boolean;
+    lastHealthCheckAt?: string;
+    lastValidDataAt?: string;
   };
   operationLog: OperationLogEntry[];
   lastUpdatedAt: string;

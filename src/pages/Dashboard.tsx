@@ -86,6 +86,7 @@ export function Dashboard({
         onExportOperationLog={onExportOperationLog}
         onDebateReset={onDebateReset}
         isDebateResetting={isDebateResetting}
+        runtimeMode={runtime.mode}
       />
       <DemoGuide />
 

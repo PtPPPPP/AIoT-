@@ -18,5 +18,6 @@ export interface SensorDataChannel {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   getStatus(): ChannelStatus;
+  subscribeStatus(listener: (status: ChannelStatus) => void): () => void;
   subscribe(listener: (packet: SensorPacket) => void): () => void;
 }
