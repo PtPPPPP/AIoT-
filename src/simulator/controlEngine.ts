@@ -7,10 +7,7 @@ import {
   Reading,
   SensorStates,
 } from '../types';
-import { actuatorDeviceIds, greenhousePolicy } from './policy';
-import { SimulationControlChannel } from '../channels/control/SimulationControlChannel';
-
-const simulationControlChannel = new SimulationControlChannel();
+import { greenhousePolicy } from './policy';
 
 export type ControlDecision = {
   targets: DeviceTargets;
@@ -81,34 +78,36 @@ export function decideAutomaticTargets(
   return { targets, blockedReasons };
 }
 
-export function applyControlDecision(
+/** 只计算期望状态；实际状态只能由控制通道返回的结果更新。 */
+export function planActuatorTargets(
   mode: ControlMode,
   automatic: ControlDecision,
   manualTargets: DeviceTargets,
-  devices: Device[],
   previous: ActuatorStates,
 ): ActuatorStates {
-  const next = {} as ActuatorStates;
-  const keys = Object.keys(actuatorDeviceIds) as DeviceStateKey[];
-
-  for (const key of keys) {
+  const next = { ...previous };
+  for (const key of Object.keys(previous) as DeviceStateKey[]) {
     const target = mode === 'auto' ? automatic.targets[key] : manualTargets[key];
-    const deviceOnline = devices.some((device) => device.id === actuatorDeviceIds[key] && device.online);
     const sensorBlock = mode === 'auto' ? automatic.blockedReasons[key] : undefined;
-    const blockedReason = !deviceOnline ? '执行器离线，控制指令未执行' : sensorBlock;
-    const command = simulationControlChannel.executeNow({
-      id: `${key}:${Date.now()}`, device: key, target, source: mode === 'auto' ? 'auto-policy' : 'manual',
-      createdAt: new Date().toISOString(), timeoutAt: new Date(Date.now() + 3_000).toISOString(), scenario: 'normal', idempotencyKey: `${key}:${target}:${mode}`,
-    }, deviceOnline);
-
     next[key] = {
+      ...previous[key],
       target: sensorBlock ? previous[key].target : target,
-      actual: deviceOnline && !sensorBlock ? command.actual : deviceOnline ? previous[key].actual : false,
-      commandStatus: blockedReason ? 'blocked' : 'applied',
-      executionStatus: blockedReason ? (sensorBlock ? 'cancelled' : command.status) : command.status,
-      ...(blockedReason ? { blockedReason } : {}),
+      commandStatus: sensorBlock ? 'blocked' : previous[key].target === target && previous[key].commandStatus !== 'blocked' ? previous[key].commandStatus : 'applied',
+      executionStatus: sensorBlock ? 'cancelled' : previous[key].target === target && previous[key].commandStatus !== 'blocked' ? previous[key].executionStatus : 'pending',
+      ...(sensorBlock ? { blockedReason: sensorBlock } : {}),
     };
   }
 
+  return next;
+}
+
+/** 模拟器的确定性执行回执；外部模式绝不调用此函数。 */
+export function applySimulationResults(planned: ActuatorStates, devices: Device[]): ActuatorStates {
+  const next = { ...planned };
+  for (const key of Object.keys(planned) as DeviceStateKey[]) {
+    const online = devices.some((device) => device.actuatorKey === key && device.online);
+    const blocked = planned[key].commandStatus === 'blocked';
+    next[key] = { ...planned[key], actual: online && !blocked ? planned[key].target : false, executionStatus: blocked ? planned[key].executionStatus : online ? 'succeeded' : 'rejected', commandStatus: blocked || !online ? 'blocked' : 'applied', ...(!online ? { blockedReason: '执行器离线，控制指令未执行' } : {}) };
+  }
   return next;
 }

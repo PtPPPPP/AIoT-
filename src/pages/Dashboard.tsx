@@ -4,7 +4,7 @@ import { MetricCard } from '../components/MetricCard';
 import { Badge } from '../components/Status';
 import { PresentationConsole } from '../components/PresentationConsole';
 import { DemoGuide } from '../components/DemoGuide';
-import { ActuatorStates, PresentationState, Reading, SensorStates } from '../types';
+import { ActuatorStates, PresentationState, Reading, SensorStates, SimulatorState } from '../types';
 import { deviceLabels, greenhousePolicy } from '../simulator/policy';
 import { formatReading, sensorRisk } from '../utils/greenhouse';
 
@@ -34,6 +34,7 @@ type DashboardProps = {
   onExportOperationLog: () => void;
   onDebateReset: () => void;
   isDebateResetting: boolean;
+  runtime: SimulatorState['runtime'];
 };
 
 export function Dashboard({
@@ -55,13 +56,14 @@ export function Dashboard({
   onExportOperationLog,
   onDebateReset,
   isDebateResetting,
+  runtime,
 }: DashboardProps) {
   return (
     <div className="page-grid">
       <section className="hero-panel">
         <div>
           <h2>温室 A 区实时运行</h2>
-          <p>当前为前端演示模式：模拟传感器、可解释策略和设备执行闭环，未连接真实硬件。</p>
+          <p>{runtime.mode === 'simulation' ? '当前为前端演示模式：模拟传感器、可解释策略和设备执行闭环，未连接真实硬件。' : runtime.dataChannelStatus === 'unconfigured' ? '边缘网关未配置，未连接真实设备。' : `当前为 ${runtime.dataSourceLabel} 数据通道。`}</p>
         </div>
         <div className="closed-loop">
           {['数据采集', 'AI分析', '自动执行', '反馈优化'].map((item) => (
@@ -126,7 +128,7 @@ export function Dashboard({
           <div className="summary-strip">
             <div><ShieldAlert size={18} />未解决报警 <strong>{stats.unresolved}</strong></div>
             <div><Cpu size={18} />在线率 <strong>{stats.onlineRate}%</strong></div>
-            <div><Wind size={18} />数据性质 <strong>本地模拟器</strong></div>
+            <div><Wind size={18} />数据来源 <strong>{runtime.dataSourceLabel}</strong></div>
             <div><Thermometer size={18} />刷新时间 <strong>{reading.time}</strong></div>
           </div>
         </section>

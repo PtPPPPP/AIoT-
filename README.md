@@ -17,6 +17,7 @@
 - 报警去重、累计次数、确认和恢复生命周期。
 - 带版本的 `localStorage` 持久化，数据损坏或版本不兼容时安全回到初始状态。
 - 正式数据/控制通道接口：当前为“本地模拟器”和“模拟设备通道”；HTTP、WebSocket、MQTT 仅保留类型安全扩展点，绝不伪装为已连接。
+- 已完成：研华接入接口、边缘网关协议、运行时校验和 I/O 映射示例预留；尚未完成真实硬件通信、寄存器映射或 MQTT/Modbus/REST 设备接入。
 - 传感器包包含来源、采集/接收时间、单位、质量和有效性；`good`、`stale`、`offline`、`invalid`、`error` 明确区分，非 `good` 数据不应参与自动控制。
 - 可导入/导出演示快照（独立 `snapshotVersion`），导入前校验 JSON、版本、场景、质量、读数、设备和运行模式；失败不会改写当前状态。
 - 报警中心支持时间、等级、状态、设备/传感器和关键词筛选，并可导出当前或全部结果 CSV；CSV 使用 UTF-8 BOM。
@@ -86,6 +87,12 @@ npm run build:offline
 ```
 
 命令会生成单个 `dist/index.html`。该文件内联了样式和应用模块，可直接双击通过 Chrome 或 Edge 打开；不需要本地服务器。常规 `npm run build` 保持原有的标准多文件生产构建方式。
+
+## 边缘网关预留
+
+默认仍是 `simulation`，不会发出外部网络请求。若后续部署边缘网关，可复制 `.env.example` 并显式设置 `VITE_RUNTIME_MODE=external` 和 `VITE_EDGE_API_BASE_URL`；缺少 URL 时页面会明确显示“边缘网关未配置”，不会假装已连接，也不会自动回退到模拟器。所有 `VITE_` 变量会暴露给浏览器，禁止放密码、Token 或设备密钥。
+
+详细协议、命令生命周期、I/O 映射和真实接入资料清单见 [docs/advantech-integration.md](docs/advantech-integration.md)。
 
 ## 答辩场景控制台
 

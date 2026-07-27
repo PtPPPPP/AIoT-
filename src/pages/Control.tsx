@@ -1,6 +1,6 @@
 import { Badge, Switch } from '../components/Status';
 import { deviceLabels, policyDescriptions } from '../simulator/policy';
-import { ActuatorStates, ControlMode, DeviceStateKey, Reading } from '../types';
+import { ActuatorStates, ControlMode, DeviceStateKey, Reading, SimulatorState } from '../types';
 import { formatReading } from '../utils/greenhouse';
 
 type ControlProps = {
@@ -9,9 +9,10 @@ type ControlProps = {
   controlMode: ControlMode;
   setControlMode: (mode: ControlMode) => void;
   toggleManualTarget: (key: DeviceStateKey) => void;
+  runtime: SimulatorState['runtime'];
 };
 
-export function Control({ reading, actuators, controlMode, setControlMode, toggleManualTarget }: ControlProps) {
+export function Control({ reading, actuators, controlMode, setControlMode, toggleManualTarget, runtime }: ControlProps) {
   const autoMode = controlMode === 'auto';
   return (
     <div className="page-grid">
@@ -22,7 +23,7 @@ export function Control({ reading, actuators, controlMode, setControlMode, toggl
         </div>
         <div className="mode-control">
           <span>{autoMode ? '自动控制' : '手动控制'}</span>
-          <Switch label="切换自动与手动控制" checked={autoMode} onChange={() => setControlMode(autoMode ? 'manual' : 'auto')} />
+          <Switch label="切换自动与手动控制" checked={autoMode} onChange={() => setControlMode(autoMode ? 'manual' : 'auto')} disabled={runtime.mode === 'external' && runtime.controlChannelStatus === 'unconfigured'} />
         </div>
       </section>
 
@@ -35,7 +36,7 @@ export function Control({ reading, actuators, controlMode, setControlMode, toggl
                 <h3>{deviceLabels[key]}</h3>
                 <p>{controlHint(key, reading)}</p>
               </div>
-              <Switch label={`设置${deviceLabels[key]}目标状态`} checked={state.target} onChange={() => toggleManualTarget(key)} disabled={autoMode} />
+              <Switch label={`设置${deviceLabels[key]}目标状态`} checked={state.target} onChange={() => toggleManualTarget(key)} disabled={autoMode || runtime.mode === 'external' && runtime.controlChannelStatus !== 'connected'} />
               <div className="control-statuses">
                 <Badge tone={state.target ? 'blue' : 'muted'}>目标：{state.target ? '开启' : '关闭'}</Badge>
                 <Badge tone={state.actual ? 'good' : state.commandStatus === 'blocked' ? 'danger' : 'muted'}>实际：{state.actual ? '运行中' : '已停止'}</Badge>

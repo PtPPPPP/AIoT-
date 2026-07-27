@@ -47,6 +47,7 @@ function App() {
             onExportOperationLog={simulator.exportOperationLog}
             onDebateReset={simulator.debateReset}
             isDebateResetting={simulator.isDebateResetting}
+            runtime={simulator.runtime}
           />
         )}
         {page === 'environment' && <Environment reading={simulator.reading} sensors={simulator.sensors} />}
@@ -57,6 +58,7 @@ function App() {
             controlMode={simulator.controlMode}
             setControlMode={simulator.setControlMode}
             toggleManualTarget={simulator.toggleManualTarget}
+            runtime={simulator.runtime}
           />
         )}
         {page === 'ai' && (

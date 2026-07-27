@@ -6,7 +6,8 @@ import { simulationIntervalMs } from '../simulator/policy';
 import { createInitialSimulatorState, simulatorReducer } from '../simulator/simulatorReducer';
 import { createSeed } from '../simulator/random';
 import { SimulationClock } from '../simulator/simulationClock';
-import { SimulationDataChannel } from '../channels/data/SimulationDataChannel';
+import { createRuntimeChannels, RuntimeChannels } from '../channels/createRuntimeChannels';
+import { SensorPacket } from '../channels/data/types';
 import { exportDemoSnapshot, parseDemoSnapshot } from '../snapshots/demoSnapshot';
 import { downloadText, exportCsv } from '../utils/exportFile';
 import { DemoScenarioId, DeviceStateKey, PresentationScenarioId, RecognitionResult } from '../types';
@@ -32,17 +33,48 @@ export function useGreenhouseSimulator() {
   const [isDebateResetting, setIsDebateResetting] = useState(false);
   const requestId = useRef(0);
   const clock = useRef<SimulationClock | null>(null);
-  const dataChannel = useRef<SimulationDataChannel | null>(null);
+  const channels = useRef<RuntimeChannels | null>(null);
+  const sentTargets = useRef<Record<DeviceStateKey, boolean> | null>(null);
 
   if (clock.current === null) {
     clock.current = new SimulationClock(() => {
       dispatch({ type: 'advance-presentation', now: new Date().toISOString() });
     }, simulationIntervalMs);
   }
-  if (dataChannel.current === null) dataChannel.current = new SimulationDataChannel();
+  if (channels.current === null) channels.current = createRuntimeChannels();
 
-  useEffect(() => { void dataChannel.current?.connect(); return () => { void dataChannel.current?.disconnect(); }; }, []);
-  useEffect(() => { dataChannel.current?.publish(state.reading, state.sensors, state.lastUpdatedAt); }, [state.lastUpdatedAt, state.reading, state.sensors]);
+  useEffect(() => {
+    const runtime = channels.current;
+    if (!runtime) return;
+    dispatch({ type: 'set-runtime', runtime: { mode: runtime.mode, dataChannelStatus: runtime.dataChannel.getStatus(), controlChannelStatus: runtime.controlChannel.getStatus(), dataSourceLabel: runtime.dataSourceLabel, controlSourceLabel: runtime.controlSourceLabel } });
+    const unsubscribe = runtime.mode === 'simulation' ? () => undefined : runtime.dataChannel.subscribe((packet: SensorPacket) => {
+      dispatch({ type: 'ingest-sensor-packet', key: packet.key, value: packet.value, quality: packet.quality, capturedAt: packet.capturedAt, sourceId: packet.sensorId });
+    });
+    void runtime.dataChannel.connect().finally(() => dispatch({ type: 'set-channel-status', channel: 'data', status: runtime.dataChannel.getStatus() }));
+    void runtime.controlChannel.connect().finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
+    return () => { unsubscribe(); void runtime.dataChannel.disconnect(); void runtime.controlChannel.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    const dataChannel = channels.current?.dataChannel;
+    if (!dataChannel || !('publish' in dataChannel) || typeof dataChannel.publish !== 'function') return;
+    dataChannel.publish(state.reading, state.sensors, state.lastUpdatedAt);
+  }, [state.lastUpdatedAt, state.reading, state.sensors]);
+
+  useEffect(() => {
+    const runtime = channels.current;
+    if (!runtime || runtime.mode === 'playback') return;
+    const previous = sentTargets.current;
+    const current = Object.fromEntries(Object.entries(state.actuators).map(([key, actuator]) => [key, actuator.target])) as Record<DeviceStateKey, boolean>;
+    sentTargets.current = current;
+    for (const key of Object.keys(current) as DeviceStateKey[]) {
+      if (previous?.[key] === current[key] || state.actuators[key].commandStatus === 'blocked') continue;
+      const deviceOnline = state.devices.some((device) => device.actuatorKey === key && device.online);
+      const command = { id: `${key}:${state.lastUpdatedAt}`, device: key, target: current[key], source: state.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, createdAt: state.lastUpdatedAt, timeoutAt: new Date(new Date(state.lastUpdatedAt).getTime() + 3_000).toISOString(), scenario: state.presentation.scenarioId, idempotencyKey: `${key}:${current[key]}:${state.controlMode}:${state.lastUpdatedAt}` };
+      if (!deviceOnline) { dispatch({ type: 'control-command-result', key, target: current[key], actual: state.actuators[key].actual, status: 'rejected', error: '执行器离线，控制指令未执行' }); continue; }
+      void runtime.controlChannel.execute(command, deviceOnline).then((result) => dispatch({ type: 'control-command-result', key, target: current[key], actual: result.actual, status: result.status, ...(result.error ? { error: result.error } : {}) })).finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
+    }
+  }, [state.actuators, state.controlMode, state.devices, state.lastUpdatedAt, state.presentation.scenarioId]);
 
   useEffect(() => {
     if (state.presentation.runStatus === 'running') clock.current?.start();

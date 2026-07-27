@@ -14,7 +14,8 @@ import {
   SimulatorState,
 } from '../types';
 import { acknowledgeAlarm, applyRecognitionAlarm, collectSystemAlarmConditions, reconcileSystemAlarms } from './alarmEngine';
-import { applyControlDecision, decideAutomaticTargets } from './controlEngine';
+import { applySimulationResults, decideAutomaticTargets, planActuatorTargets } from './controlEngine';
+import { runtimeConfig, isExternalConfigured } from '../config/runtimeConfig';
 import { emptyEfficiencyCounters, updateEfficiencyCounters } from './metricsEngine';
 import { simulateReading } from './readingSimulator';
 import { createPresentationState, preparePresentationFrame } from './presentationScenarios';
@@ -40,7 +41,11 @@ export type SimulatorAction =
   | { type: 'set-presentation-seed'; seed: string; now: string }
   | { type: 'import-snapshot'; state: SimulatorState; now: string }
   | { type: 'debate-reset'; now: string }
-  | { type: 'reset'; now: string };
+  | { type: 'reset'; now: string }
+  | { type: 'control-command-result'; key: DeviceStateKey; target: boolean; actual: boolean; status: SimulatorState['actuators'][DeviceStateKey]['executionStatus']; error?: string }
+  | { type: 'set-channel-status'; channel: 'data' | 'control'; status: SimulatorState['runtime']['dataChannelStatus'] }
+  | { type: 'set-runtime'; runtime: SimulatorState['runtime'] }
+  | { type: 'ingest-sensor-packet'; key: keyof SimulatorState['sensors']; value: number | null; quality: SimulatorState['sensors'][keyof SimulatorState['sensors']]['quality']; capturedAt: string; sourceId: string };
 
 function seedHistory(now: string) {
   const base = new Date(now);
@@ -75,7 +80,13 @@ export function createInitialSimulatorState(now: string): SimulatorState {
     irrigationCount: 0,
     demoScenario: 'healthy',
     presentation: createPresentationState(),
-    runtime: { mode: 'simulation', dataChannelStatus: 'connected', controlChannelStatus: 'connected', dataSourceLabel: '本地模拟器', controlSourceLabel: '模拟设备通道' },
+    runtime: {
+      mode: runtimeConfig.mode,
+      dataChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
+      controlChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
+      dataSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '本地回放' : '本地模拟器',
+      controlSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关控制通道' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '回放控制禁用' : '模拟设备通道',
+    },
     operationLog: [],
     lastUpdatedAt: now,
   };
@@ -85,7 +96,8 @@ export function advanceSimulator(state: SimulatorState, now: string, randomValue
   const simulated = simulateReading(state.reading, state.sensors, state.devices, state.actuators, now, randomValues);
   const previousTargets = Object.fromEntries(Object.entries(state.actuators).map(([key, value]) => [key, value.target])) as SimulatorState['manualTargets'];
   const automatic = decideAutomaticTargets(simulated.reading, simulated.sensors, previousTargets);
-  const actuators = applyControlDecision(state.controlMode, automatic, state.manualTargets, state.devices, state.actuators);
+  const planned = planActuatorTargets(state.controlMode, automatic, state.manualTargets, state.actuators);
+  const actuators = state.runtime.mode === 'simulation' ? applySimulationResults(planned, state.devices) : planned;
   const alarms = reconcileSystemAlarms(
     state.alarms,
     collectSystemAlarmConditions(simulated.reading, simulated.sensors, state.devices, actuators),
@@ -133,7 +145,8 @@ function createScenarioState(
 function recalculateControl(state: SimulatorState, now: string): SimulatorState {
   const previousTargets = Object.fromEntries(Object.entries(state.actuators).map(([key, value]) => [key, value.target])) as SimulatorState['manualTargets'];
   const automatic = decideAutomaticTargets(state.reading, state.sensors, previousTargets);
-  const actuators = applyControlDecision(state.controlMode, automatic, state.manualTargets, state.devices, state.actuators);
+  const planned = planActuatorTargets(state.controlMode, automatic, state.manualTargets, state.actuators);
+  const actuators = state.runtime.mode === 'simulation' ? applySimulationResults(planned, state.devices) : planned;
   const alarms = reconcileSystemAlarms(
     state.alarms,
     collectSystemAlarmConditions(state.reading, state.sensors, state.devices, actuators),
@@ -192,5 +205,19 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     }
     case 'reset':
       return createInitialSimulatorState(action.now);
+    case 'set-runtime':
+      return { ...state, runtime: action.runtime };
+    case 'set-channel-status':
+      return { ...state, runtime: action.channel === 'data' ? { ...state.runtime, dataChannelStatus: action.status } : { ...state.runtime, controlChannelStatus: action.status } };
+    case 'ingest-sensor-packet': {
+      const sensor = { ...state.sensors[action.key], sourceId: action.sourceId, quality: action.quality, status: action.quality === 'offline' ? 'offline' : 'live', lastUpdatedAt: action.capturedAt, ...(action.value === null ? {} : { lastValue: action.value }) };
+      return { ...state, sensors: { ...state.sensors, [action.key]: sensor }, reading: { ...state.reading, [action.key]: action.value, capturedAt: action.capturedAt, time: new Date(action.capturedAt).toLocaleTimeString('zh-CN') }, lastUpdatedAt: action.capturedAt };
+    }
+    case 'control-command-result': {
+      const previous = state.actuators[action.key];
+      const failed = ['failed', 'timed_out', 'rejected', 'cancelled'].includes(action.status);
+      const actuator = { ...previous, target: action.target, actual: action.actual, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, ...(action.error ? { blockedReason: action.error } : {}) };
+      return { ...state, actuators: { ...state.actuators, [action.key]: actuator } };
+    }
   }
 }

@@ -7,5 +7,5 @@ export type ControlCommand = {
 };
 export type ControlResult = { command: ControlCommand; status: ControlCommandStatus; actual: boolean; error?: string };
 export interface DeviceControlChannel {
-  connect(): Promise<void>; disconnect(): Promise<void>; getStatus(): ChannelStatus; execute(command: ControlCommand, deviceOnline: boolean): Promise<ControlResult>;
+  connect(): Promise<void>; disconnect(): Promise<void>; getStatus(): ChannelStatus; execute(command: ControlCommand, deviceOnline?: boolean): Promise<ControlResult>;
 }
