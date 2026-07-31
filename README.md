@@ -1,10 +1,41 @@
 # AIoT 智慧温室种植系统
 
-这是一个面向大学生创新创业项目申报和现场答辩的 **React + TypeScript 前端演示原型**。它使用可测试的本地模拟器展示“数据采集 - 策略分析 - 设备执行 - 报警反馈”闭环。
+这是一个面向大学生创新创业项目申报和现场答辩的 **React + TypeScript AIoT 智慧温室原型**。项目采用研华远程 I/O 与可替换边缘计算节点，使用可测试的本地模拟器展示“数据采集 - 规则判断 - 设备执行 - 状态反馈”闭环。
 
 > 重要：当前没有连接真实传感器、MQTT、后端数据库、YOLO/YieldNet 模型或真实控制器。页面中的识别、节水率和节能率均明确标注为演示或策略估算。
 
-> 架构说明：`graphify-out` 因本机缺少离线语义抽取依赖而未更新，当前架构以 `src/` 源码和自动化测试为准。
+> 边缘节点说明：本系统不绑定特定边缘计算硬件。当前原型可使用普通 Windows 笔记本或台式机运行边缘网关、控制策略、数据存储、AI 推理客户端和 React 页面；后续可迁移至 Jetson、工业计算机或其他兼容平台。
+
+## 当前系统架构
+
+```text
+传感器
+  ↓
+WISE-4012
+  ↓ Wi-Fi / 局域网
+路由器或 Wi-Fi AP
+  ↓
+EKI-2525
+  ├── ADAM-6050 ── 水泵 / 风机 / 补光灯 / 遮阳机构
+  └── 可替换边缘计算节点
+        ├── 边缘网关
+        ├── 确定性控制策略
+        ├── 数据存储
+        ├── 可替换 AI 推理提供者
+        └── React 控制平台
+```
+
+当前参考边缘节点是 Windows 笔记本或台式机。未来可替换为 Jetson、工业计算机或其他兼容平台。React 前端只访问项目自定义边缘网关，不直接连接研华设备，也不保存设备账号、密码、MQTT 凭据、Token 或密钥。
+
+### 当前参考方案
+
+- WISE-4012：计划负责温度、湿度、土壤湿度、CO₂、光照等真实环境数据采集。
+- ADAM-6050：计划负责水箱低液位、设备反馈、限位、急停等数字输入，以及水泵、风机、补光灯、遮阳机构等数字输出。
+- EKI-2525：负责工业以太网交换，不提供前端业务 API。
+- Windows 计算机：当前原型阶段的参考边缘网关与 AI 推理节点，不是永久固定硬件。
+- React：监控和控制界面，通过 HTTP/WebSocket 访问项目自定义边缘网关。
+
+MIC-711D 不再作为当前原型的必要依赖。项目采用硬件解耦架构，可根据条件选择普通计算机、Jetson 或工业边缘计算平台。
 
 ## 已实现
 
@@ -24,6 +55,8 @@
 - 报警中心支持时间、等级、状态、设备/传感器和关键词筛选，并可导出当前或全部结果 CSV；CSV 使用 UTF-8 BOM。
 - 答辩场景关键操作保存为上限 200 条的轻量操作记录，可从控制台导出 CSV。
 - AI 演示识别适配器：验证图片类型、大小和解码，支持预览与稳定内容指纹，结果来自用户明确选择的演示场景。
+- 可替换 AI 推理通道：simulation 使用离线模拟通道；external 可显式启用项目自定义 `POST /api/v1/ai/infer` 客户端，响应从 `unknown` 开始校验。
+- 独立边缘节点配置：节点类型、节点名称、网关地址和 AI 提供者与 simulation/external/playback 运行模式分开。
 - 基于模拟基线和设备运行时长/功率的策略节水、节能估算；样本不足时显示“数据不足”。
 - ESLint、Vitest、React Testing Library、TypeScript 类型检查和一键工程检查。
 
@@ -60,6 +93,10 @@ src/
     aiRecognitionAdapter.ts   # 演示／远程识别适配器
     simulatorReducer.ts       # 单帧状态归约
   channels/                   # 模拟/边缘网关数据与控制通道、协议校验和通道工厂
+    ai/                       # 模拟/边缘网关 AI 推理通道及严格 DTO 校验
+  config/
+    edgeNodeConfig.ts         # 可替换边缘节点与 AI 提供者配置
+    runtimeConfig.ts          # simulation/external/playback 与通信时限
   snapshots/demoSnapshot.ts   # 快照格式、导出与导入校验
   utils/exportFile.ts         # file:// 可用的 JSON/CSV 下载和 CSV 转义
   hooks/
@@ -91,9 +128,13 @@ npm run build:offline
 
 ## 边缘网关预留
 
-默认仍是 `simulation`，不会发出外部网络请求。若后续部署边缘网关，可复制 `.env.example` 并显式设置 `VITE_RUNTIME_MODE=external` 和 `VITE_EDGE_API_BASE_URL`；缺少 URL 时页面会明确显示“边缘网关未配置”，不会假装已连接，也不会自动回退到模拟器。所有 `VITE_` 变量会暴露给浏览器，禁止放密码、Token 或设备密钥。
+默认仍是 `simulation`，不会发出外部网络请求。若后续部署边缘网关，可复制 `.env.example`，设置独立的边缘节点配置，并显式将 `VITE_RUNTIME_MODE` 设为 `external`。缺少 `VITE_EDGE_API_BASE_URL` 时页面会明确显示“边缘网关未配置”，不会假装已连接，也不会自动回退到模拟器。节点类型只描述部署位置，`local-pc` 不等于已连接；连接状态仍由 `GET /api/v1/health` 和后续数据状态决定。
 
-详细协议、命令生命周期、I/O 映射和真实接入资料清单见 [docs/advantech-integration.md](docs/advantech-integration.md)。
+AI 提供者取值为 `simulation`、`edge-gateway` 或 `disabled`。只有在 external 模式下同时配置网关地址、`VITE_EDGE_AI_PROVIDER=edge-gateway` 和 `VITE_EDGE_AI_ENABLED=true`，前端才会调用项目自定义 `POST /api/v1/ai/infer`。没有真实 AI 服务时不会生成伪造成功结果。AI 输出只用于识别、报警和建议，水泵、风机、补光与遮阳仍由确定性规则和人工控制决定。
+
+所有 `VITE_` 变量会暴露给浏览器，禁止放密码、Token 或设备密钥。
+
+详细协议、命令生命周期、I/O 映射和真实接入资料清单见 [docs/advantech-integration.md](docs/advantech-integration.md)。边缘节点部署、职责边界和迁移步骤见 [docs/edge-compute-deployment.md](docs/edge-compute-deployment.md)。
 
 ## 技术栈
 
@@ -111,6 +152,7 @@ npm run build:offline
 - 使用 React Hooks、`useReducer` 和自定义 `useGreenhouseSimulator` 统一管理模拟状态、持久化、场景操作和通道生命周期。
 - `simulatorReducer` 只根据 action 归约状态；`controlEngine` 使用纯函数计算自动控制目标，不直接发网络请求或创建通道。
 - `SensorDataChannel` 与 `DeviceControlChannel` 抽象数据和控制边界；`createRuntimeChannels` 通过工厂在 simulation、external、playback 模式间替换通道，测试可注入替代实现。
+- `AiInferenceChannel` 抽象 AI 推理提供者；模拟通道保持离线演示，边缘网关通道只负责请求、DTO 校验和结果展示，不包含真实模型。
 - 执行器的目标状态与实际状态分开保存。模拟模式使用确定性模拟回执；外部模式只能以网关控制响应写入实际状态。
 
 ### 数据、通信与本地存储
@@ -120,6 +162,7 @@ npm run build:offline
 - 面向项目自定义边缘网关的 HTTP 轮询：`GET /api/v1/sensors/latest`，含 `AbortController` 超时、重复连接保护、订阅取消和 stale 标记。
 - 面向边缘网关的 HTTP 控制：`POST /api/v1/control/commands`，含幂等键、命令状态、HTTP 非 2xx 和无效 JSON 的失败处理。
 - 带 `schemaVersion` 的网关 DTO、轻量 TypeScript 运行时校验、`good/stale/offline/invalid/error` 数据质量区分。
+- AI 推理客户端 DTO 与运行时校验，包括 requestId、置信度、边界框、状态和错误响应校验。
 - `localStorage` 状态持久化，以及 JSON 快照和 UTF-8 BOM CSV 的导入导出。
 
 尚未实现：真实 MQTT Broker、真实 Modbus TCP、研华设备原生 REST 适配、真实 WebSocket 连接、正式后端服务和数据库。WebSocket 目前只有事件协议类型，不会建立浏览器连接。
@@ -131,6 +174,7 @@ npm run build:offline
 - EKI-2525 仅计划作为工业以太网交换机，不提供前端业务控制 API。
 - React 前端不会直接访问工业设备；后续由边缘网关统一适配 REST、MQTT 或 Modbus TCP。
 - 当前只提供网关软件接口和禁用的 I/O 映射示例，未连接真实 WISE-4012、ADAM-6050 或 EKI-2525。
+- MIC-711D 只可作为未来候选设备之一，不是当前必需设备，也未被描述为已经接入。
 
 ### 测试与质量保障
 
@@ -146,7 +190,7 @@ npm run build:offline
 
 - `npm run dev` 启动 Vite 开发服务器；`npm run build` 生成常规生产构建。
 - `npm run build:offline` 生成可直接打开的单文件 `dist/index.html`；离线构建默认使用 simulation，不会主动访问边缘网关。
-- `.env.example` 提供 `VITE_RUNTIME_MODE`、边缘网关 URL、轮询间隔、超时和 stale 时限。默认模式为 simulation；external 缺少 API URL 时显示未配置，不自动回退。
+- `.env.example` 提供独立的运行模式、边缘节点、AI 提供者、边缘网关 URL、轮询间隔、超时和 stale 时限。默认模式为 simulation；external 缺少 API URL 时显示未配置，不自动回退。
 - playback 已预留运行类型且不会建立网络连接，目前未实现完整的快照时间序列回放；仓库没有 Docker、云端部署、正式服务器或数据库配置。
 
 ## 答辩场景控制台
@@ -171,9 +215,28 @@ npm run test:run
 npm run build
 npm run build:offline
 npm run check
+npm run test:e2e
 ```
 
 `npm run check` 会依次执行类型检查、ESLint、自动化测试和生产构建。
+
+## 当前项目阶段
+
+### 已完成
+
+- simulation 模式、external 软件接口和 playback 类型预留。
+- 边缘网关 DTO、HTTP 数据与控制通道、运行时校验和 I/O 映射示例。
+- 独立边缘节点配置及 simulation、edge-gateway、disabled AI 提供者。
+- AI 演示页面、离线答辩构建、数据监控、确定性控制、报警与设备管理。
+
+### 尚未完成
+
+- 真实 WISE-4012、ADAM-6050 联调和真实传感器、继电器接线。
+- 正式边缘网关服务、真实 MQTT、Modbus TCP 和研华原生 REST 适配。
+- 真实 AI 模型、摄像头采集、正式数据库和云端部署。
+- 断网、断电、低液位、限位和急停的现场安全验证。
+
+后续迁移只替换操作系统适配、服务启动方式、GPU 推理后端和摄像头驱动；网关 API、DTO、控制规则、前端页面和数据库模型保持硬件无关。
 
 ## 答辩演示建议
 

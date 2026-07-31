@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { DemoRecognitionAdapter } from '../simulator/aiRecognitionAdapter';
 import { calculateEfficiencyMetrics } from '../simulator/metricsEngine';
 import { persistenceKey, restoreState, saveState } from '../simulator/persistence';
 import { simulationIntervalMs } from '../simulator/policy';
@@ -13,8 +12,6 @@ import { EdgeGatewayControlChannel } from '../channels/control/EdgeGatewayContro
 import { exportDemoSnapshot, parseDemoSnapshot } from '../snapshots/demoSnapshot';
 import { downloadText, exportCsv } from '../utils/exportFile';
 import { DemoScenarioId, DeviceStateKey, PresentationScenarioId, RecognitionResult } from '../types';
-
-const recognitionAdapter = new DemoRecognitionAdapter();
 
 function initializeState() {
   const initial = createInitialSimulatorState(new Date().toISOString());
@@ -48,7 +45,22 @@ export function useGreenhouseSimulator() {
   useEffect(() => {
     const runtime = channels.current;
     if (!runtime) return;
-    dispatch({ type: 'set-runtime', runtime: { mode: runtime.mode, dataChannelStatus: runtime.dataChannel.getStatus(), controlChannelStatus: runtime.controlChannel.getStatus(), dataSourceLabel: runtime.dataSourceLabel, controlSourceLabel: runtime.controlSourceLabel, externalInitialSyncStatus: runtime.mode === 'external' ? 'idle' : 'ready', controlArmed: runtime.mode === 'simulation' } });
+    dispatch({
+      type: 'set-runtime',
+      runtime: {
+        mode: runtime.mode,
+        edgeNodeType: runtime.edgeNode.type,
+        edgeNodeName: runtime.edgeNode.displayName,
+        dataChannelStatus: runtime.dataChannel.getStatus(),
+        controlChannelStatus: runtime.controlChannel.getStatus(),
+        dataSourceLabel: runtime.dataSourceLabel,
+        controlSourceLabel: runtime.controlSourceLabel,
+        aiProvider: runtime.aiInferenceChannel.source,
+        aiSourceLabel: runtime.aiInferenceChannel.sourceLabel,
+        externalInitialSyncStatus: runtime.mode === 'external' ? 'idle' : 'ready',
+        controlArmed: runtime.mode === 'simulation',
+      },
+    });
     const unsubscribe = runtime.mode === 'simulation' ? () => undefined : runtime.dataChannel.subscribe((packet: SensorPacket) => {
       dispatch({ type: 'ingest-sensor-packet', key: packet.key, value: packet.value, quality: packet.quality, capturedAt: packet.capturedAt, sourceId: packet.sensorId });
     });
@@ -185,16 +197,20 @@ export function useGreenhouseSimulator() {
     setAiResult(null);
     setAiError(null);
     try {
-      const result = await recognitionAdapter.recognize(file, scenario);
+      const aiChannel = channels.current?.aiInferenceChannel;
+      if (!aiChannel) throw new Error('AI 推理通道尚未初始化。');
+      const result = await aiChannel.recognize(file, scenario);
       if (currentRequest !== requestId.current) return;
       setAiResult(result);
       setAiStage('done');
       dispatch({ type: 'recognition-completed', result, now: new Date().toISOString() });
-      setActionMessage('演示识别已完成；结果来自人工选定场景，不是真实模型推理。');
+      setActionMessage(result.mode === 'demo'
+        ? '模拟识别已完成；结果来自人工选定场景，不是真实模型推理。'
+        : '边缘网关 AI 推理已返回；结果仅用于识别、报警和建议。');
     } catch (error) {
       if (currentRequest !== requestId.current) return;
       setAiStage('error');
-      setAiError(error instanceof Error ? error.message : '演示识别失败。');
+      setAiError(error instanceof Error ? error.message : 'AI 推理失败。');
     }
   }, []);
 

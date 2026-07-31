@@ -1,3 +1,5 @@
+import type { AiInferenceProvider, EdgeNodeType } from './config/edgeNodeConfig';
+
 export type PageKey =
   | 'dashboard'
   | 'environment'
@@ -145,10 +147,14 @@ export type SimulatorState = {
   presentation: PresentationState;
   runtime: {
     mode: RuntimeMode;
+    edgeNodeType: EdgeNodeType;
+    edgeNodeName: string;
     dataChannelStatus: ChannelStatus;
     controlChannelStatus: ChannelStatus;
     dataSourceLabel: string;
     controlSourceLabel: string;
+    aiProvider: AiInferenceProvider;
+    aiSourceLabel: string;
     externalInitialSyncStatus: 'idle' | 'checking_health' | 'syncing_actuators' | 'ready' | 'failed';
     controlArmed: boolean;
     lastHealthCheckAt?: string;

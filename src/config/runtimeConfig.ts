@@ -1,4 +1,5 @@
 import { RuntimeMode } from '../types';
+import { createEdgeNodeConfig, EdgeNodeEnv } from './edgeNodeConfig';
 
 export type RuntimeConfig = {
   mode: RuntimeMode;
@@ -10,7 +11,7 @@ export type RuntimeConfig = {
   staleAfterMs: number;
   warnings: string[];
 };
-type RuntimeEnv = { VITE_RUNTIME_MODE?: string; VITE_EDGE_API_BASE_URL?: string; VITE_EDGE_WS_URL?: string; VITE_EDGE_DATA_TRANSPORT?: string; VITE_EDGE_POLL_INTERVAL_MS?: string; VITE_EDGE_REQUEST_TIMEOUT_MS?: string; VITE_EDGE_STALE_AFTER_MS?: string };
+type RuntimeEnv = EdgeNodeEnv & { VITE_RUNTIME_MODE?: string; VITE_EDGE_WS_URL?: string; VITE_EDGE_DATA_TRANSPORT?: string; VITE_EDGE_POLL_INTERVAL_MS?: string; VITE_EDGE_REQUEST_TIMEOUT_MS?: string; VITE_EDGE_STALE_AFTER_MS?: string };
 
 const defaults = { pollIntervalMs: 1_000, requestTimeoutMs: 3_000, staleAfterMs: 5_000 };
 const modes: RuntimeMode[] = ['simulation', 'external', 'playback'];
@@ -31,14 +32,15 @@ function readUrl(value: string | undefined, name: string, warnings: string[]) {
 }
 
 export function createRuntimeConfig(env: RuntimeEnv = import.meta.env): RuntimeConfig {
-  const warnings: string[] = [];
+  const edgeNode = createEdgeNodeConfig(env);
+  const warnings = [...edgeNode.warnings];
   const mode = modes.includes(env.VITE_RUNTIME_MODE as RuntimeMode) ? env.VITE_RUNTIME_MODE as RuntimeMode : 'simulation';
   if (env.VITE_RUNTIME_MODE && mode === 'simulation' && env.VITE_RUNTIME_MODE !== 'simulation') warnings.push('VITE_RUNTIME_MODE 无效，已使用 simulation。');
   const dataTransport = env.VITE_EDGE_DATA_TRANSPORT === 'websocket' ? 'websocket' : 'http-polling';
   if (env.VITE_EDGE_DATA_TRANSPORT && !['http-polling', 'websocket'].includes(env.VITE_EDGE_DATA_TRANSPORT)) warnings.push('VITE_EDGE_DATA_TRANSPORT 无效，已使用 http-polling。');
   return {
     mode,
-    edgeApiBaseUrl: readUrl(env.VITE_EDGE_API_BASE_URL, 'VITE_EDGE_API_BASE_URL', warnings),
+    edgeApiBaseUrl: edgeNode.gatewayBaseUrl,
     edgeWsUrl: readUrl(env.VITE_EDGE_WS_URL, 'VITE_EDGE_WS_URL', warnings),
     dataTransport,
     pollIntervalMs: readNumber(env.VITE_EDGE_POLL_INTERVAL_MS, defaults.pollIntervalMs, 'VITE_EDGE_POLL_INTERVAL_MS', warnings),

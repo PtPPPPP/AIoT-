@@ -7,6 +7,7 @@ import { DemoGuide } from '../components/DemoGuide';
 import { ActuatorStates, PresentationState, Reading, SensorStates, SimulatorState } from '../types';
 import { deviceLabels, greenhousePolicy } from '../simulator/policy';
 import { formatReading, sensorRisk } from '../utils/greenhouse';
+import { edgeNodeTypeLabel } from '../config/edgeNodeConfig';
 
 type DashboardProps = {
   reading: Reading;
@@ -66,7 +67,7 @@ export function Dashboard({
           <p>{runtime.mode === 'simulation' ? '当前为前端演示模式：模拟传感器、可解释策略和设备执行闭环，未连接真实硬件。' : runtime.dataChannelStatus === 'unconfigured' ? '边缘网关未配置，未连接真实设备。' : `当前为 ${runtime.dataSourceLabel} 数据通道。`}</p>
         </div>
         <div className="closed-loop">
-          {['数据采集', 'AI分析', '自动执行', '反馈优化'].map((item) => (
+          {['数据采集', '规则判断', '设备执行', '状态反馈'].map((item) => (
             <span key={item}>{item}</span>
           ))}
         </div>
@@ -130,6 +131,9 @@ export function Dashboard({
             <div><ShieldAlert size={18} />未解决报警 <strong>{stats.unresolved}</strong></div>
             <div><Cpu size={18} />在线率 <strong>{stats.onlineRate}%</strong></div>
             <div><Wind size={18} />数据来源 <strong>{runtime.dataSourceLabel}</strong></div>
+            <div><Cpu size={18} />边缘节点 <strong>{runtime.edgeNodeName}（{edgeNodeTypeLabel(runtime.edgeNodeType)}）</strong></div>
+            <div><ShieldAlert size={18} />网关状态 <strong>{runtime.mode === 'external' ? runtime.dataChannelStatus : '未连接真实网关'}</strong></div>
+            <div><Cpu size={18} />AI 来源 <strong>{runtime.aiSourceLabel}</strong></div>
             <div><Thermometer size={18} />刷新时间 <strong>{reading.time}</strong></div>
           </div>
         </section>

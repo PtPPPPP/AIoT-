@@ -2,6 +2,7 @@ import { Battery, Camera, Cpu, RadioTower, ToggleLeft } from '../components/Icon
 import { Badge, Switch } from '../components/Status';
 import { ActuatorStates, Device, SimulatorState } from '../types';
 import { formatTimestamp } from '../utils/greenhouse';
+import { edgeNodeTypeLabel } from '../config/edgeNodeConfig';
 
 export function Devices({
   devices,
@@ -17,7 +18,7 @@ export function Devices({
   return (
     <div className="page-grid">
       <section className="panel">
-        <p>运行模式：{runtime.mode === 'simulation' ? '答辩演示' : runtime.mode} · 数据来源：{runtime.dataSourceLabel}（{runtime.dataChannelStatus}）· 控制通道：{runtime.controlSourceLabel}（{runtime.controlChannelStatus}）</p>
+        <p>运行模式：{runtime.mode === 'simulation' ? '答辩演示' : runtime.mode} · 边缘节点：{runtime.edgeNodeName}（{edgeNodeTypeLabel(runtime.edgeNodeType)}）· 数据来源：{runtime.dataSourceLabel}（{runtime.dataChannelStatus}）· 控制通道：{runtime.controlSourceLabel}（{runtime.controlChannelStatus}）· AI 来源：{runtime.aiSourceLabel}</p>
         <div className="section-title">
           <div>
             <h2>IoT 设备演示管理</h2>

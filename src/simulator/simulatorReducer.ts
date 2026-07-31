@@ -16,6 +16,7 @@ import {
 import { acknowledgeAlarm, applyRecognitionAlarm, collectSystemAlarmConditions, reconcileSystemAlarms } from './alarmEngine';
 import { applySimulationResults, decideAutomaticTargets, planActuatorTargets } from './controlEngine';
 import { runtimeConfig, isExternalConfigured } from '../config/runtimeConfig';
+import { edgeNodeConfig, aiProviderLabel, effectiveAiProvider } from '../config/edgeNodeConfig';
 import { emptyEfficiencyCounters, updateEfficiencyCounters } from './metricsEngine';
 import { simulateReading } from './readingSimulator';
 import { createPresentationState, preparePresentationFrame } from './presentationScenarios';
@@ -69,6 +70,7 @@ function seedHistory(now: string) {
 export function createInitialSimulatorState(now: string): SimulatorState {
   const devices = initialDevices.map((device) => ({ ...device, updatedAt: now }));
   const sensors = Object.fromEntries(Object.entries(initialSensorStates).map(([key, sensor]) => [key, { ...sensor, lastUpdatedAt: now }])) as SimulatorState['sensors'];
+  const initialAiProvider = effectiveAiProvider(runtimeConfig.mode, edgeNodeConfig);
   return {
     reading: { ...initialReading, capturedAt: now },
     history: seedHistory(now),
@@ -84,10 +86,14 @@ export function createInitialSimulatorState(now: string): SimulatorState {
     presentation: createPresentationState(),
     runtime: {
       mode: runtimeConfig.mode,
+      edgeNodeType: edgeNodeConfig.type,
+      edgeNodeName: edgeNodeConfig.displayName,
       dataChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
       controlChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
       dataSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '本地回放' : '本地模拟器',
       controlSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关控制通道' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '回放控制禁用' : '模拟设备通道',
+      aiProvider: initialAiProvider,
+      aiSourceLabel: aiProviderLabel(initialAiProvider),
       externalInitialSyncStatus: runtimeConfig.mode === 'external' ? 'idle' : 'ready', controlArmed: runtimeConfig.mode === 'simulation',
     },
     operationLog: [],

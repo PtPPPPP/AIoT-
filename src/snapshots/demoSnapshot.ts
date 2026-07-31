@@ -1,7 +1,7 @@
 import { SimulatorState } from '../types';
 
-export const snapshotVersion = 1;
-export type DemoSnapshot = { snapshotVersion: 1; createdAt: string; state: SimulatorState };
+export const snapshotVersion = 2;
+export type DemoSnapshot = { snapshotVersion: 2; createdAt: string; state: SimulatorState };
 
 const keys = ['temperature', 'humidity', 'light', 'soilMoisture', 'co2'];
 const actuatorKeys = ['waterPump', 'fan', 'growLight', 'shade'];
@@ -24,6 +24,15 @@ export function parseDemoSnapshot(raw: string): DemoSnapshot {
   if (!keys.every((key) => state.reading && (state.reading as Record<string, unknown>)[key] === null || typeof (state.reading as Record<string, unknown>)[key] === 'number')) throw new Error('快照读数无效。');
   if (!keys.every((key) => ['good', 'stale', 'offline', 'invalid', 'error'].includes((state.sensors as Record<string, { quality?: string }>)[key]?.quality ?? ''))) throw new Error('快照数据质量无效。');
   if (!actuatorKeys.every((key) => typeof (state.actuators as Record<string, { target?: unknown; actual?: unknown }>)[key]?.target === 'boolean' && typeof (state.actuators as Record<string, { target?: unknown; actual?: unknown }>)[key]?.actual === 'boolean')) throw new Error('快照设备状态无效。');
-  if (!state.runtime || !['simulation', 'external', 'playback'].includes(state.runtime.mode ?? '')) throw new Error('快照运行模式无效。');
+  if (
+    !state.runtime
+    || !['simulation', 'external', 'playback'].includes(state.runtime.mode ?? '')
+    || !['local-pc', 'industrial-pc', 'jetson', 'remote-server', 'unconfigured'].includes(state.runtime.edgeNodeType ?? '')
+    || typeof state.runtime.edgeNodeName !== 'string'
+    || !['simulation', 'edge-gateway', 'disabled'].includes(state.runtime.aiProvider ?? '')
+    || typeof state.runtime.aiSourceLabel !== 'string'
+  ) {
+    throw new Error('快照运行配置无效。');
+  }
   return value as DemoSnapshot;
 }

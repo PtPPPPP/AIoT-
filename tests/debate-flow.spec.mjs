@@ -2,7 +2,11 @@ import { expect, test } from '@playwright/test';
 
 test('答辩主链路、故障链路和七页导航没有页面错误', async ({ page, baseURL }) => {
   const errors = [];
+  const gatewayRequests = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (request.url().includes('/api/v1/')) gatewayRequests.push(request.url());
+  });
   await page.goto(baseURL.endsWith('/') ? `${baseURL}index.html` : baseURL);
   await expect(page.getByText('运行模式：答辩仿真')).toBeVisible();
   await expect(page.getByText('数据：本地模拟通道')).toBeVisible();
@@ -24,6 +28,7 @@ test('答辩主链路、故障链路和七页导航没有页面错误', async ({
     await expect(page.locator('#root')).not.toBeEmpty();
   }
   expect(errors).toEqual([]);
+  expect(gatewayRequests).toEqual([]);
 });
 
 test('快照导出、报警导出与答辩复位可用', async ({ page, baseURL }) => {

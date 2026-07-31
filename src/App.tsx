@@ -67,6 +67,7 @@ function App() {
             aiResult={simulator.aiResult}
             aiError={simulator.aiError}
             scenario={simulator.demoScenario}
+            runtime={simulator.runtime}
             setScenario={simulator.setDemoScenario}
             runRecognition={simulator.runRecognition}
           />
@@ -75,7 +76,7 @@ function App() {
         {page === 'devices' && (
           <Devices devices={simulator.devices} actuators={simulator.actuators} toggleDeviceOnline={simulator.toggleDeviceOnline} runtime={simulator.runtime} />
         )}
-        {page === 'intro' && <ProjectIntro />}
+        {page === 'intro' && <ProjectIntro runtime={simulator.runtime} />}
       </Suspense>
     </Layout>
   );
