@@ -1133,3 +1133,18 @@ button:disabled {
     min-height: 180px;
   }
 }
+.hardware-overview {
+  min-width: 0;
+}
+
+.hardware-topology {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 16px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.8;
+}
+

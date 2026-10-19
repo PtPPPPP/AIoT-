@@ -52,7 +52,7 @@ export const initialDevices: Device[] = [
   { id: 'ACT-F-02', name: '排风风扇', kind: 'actuator', location: '北侧风口', online: true, updatedAt: initialTimestamp, actuatorKey: 'fan' },
   { id: 'ACT-L-03', name: 'LED补光灯', kind: 'actuator', location: 'A区棚顶', online: true, updatedAt: initialTimestamp, actuatorKey: 'growLight' },
   { id: 'ACT-S-04', name: '遮阳设备', kind: 'actuator', location: '棚顶遮阳系统', online: true, updatedAt: initialTimestamp, actuatorKey: 'shade' },
-  { id: 'GW-01', name: 'LoRa/4G网关', kind: 'gateway', location: '控制柜', online: true, battery: 100, updatedAt: initialTimestamp },
+  { id: 'GW-01', name: '边缘网关（软件演示）', kind: 'gateway', location: '参考边缘计算机', online: true, updatedAt: initialTimestamp },
 ];
 
 export const initialAlarms: Alarm[] = [

@@ -3,6 +3,7 @@ import { Badge, Switch } from '../components/Status';
 import { ActuatorStates, Device, SimulatorState } from '../types';
 import { formatTimestamp } from '../utils/greenhouse';
 import { edgeNodeTypeLabel } from '../config/edgeNodeConfig';
+import { HardwareOverview } from '../components/HardwareOverview';
 
 export function Devices({
   devices,
@@ -17,12 +18,13 @@ export function Devices({
 }) {
   return (
     <div className="page-grid">
+      <HardwareOverview showMappings />
       <section className="panel">
         <p>运行模式：{runtime.mode === 'simulation' ? '答辩演示' : runtime.mode} · 边缘节点：{runtime.edgeNodeName}（{edgeNodeTypeLabel(runtime.edgeNodeType)}）· 数据来源：{runtime.dataSourceLabel}（{runtime.dataChannelStatus}）· 控制通道：{runtime.controlSourceLabel}（{runtime.controlChannelStatus}）· AI 来源：{runtime.aiSourceLabel}</p>
         <div className="section-title">
           <div>
-            <h2>IoT 设备演示管理</h2>
-            <p>离线会真实阻断本地模拟数据或控制执行，恢复在线后下一帧自动恢复业务流。</p>
+            <h2>{runtime.mode === 'simulation' ? '仿真业务设备管理' : '网关业务设备状态'}</h2>
+            <p>{runtime.mode === 'simulation' ? '以下传感器、摄像头、执行器和软件网关均为仿真对象，不代表已配齐或接线。传感器与执行器离线会阻断对应模拟数据或控制，软件网关开关仅演示自身状态。' : '设备在线状态由边缘网关提供，与上方已持有的硬件清单分别展示。'}</p>
           </div>
           <Badge tone="blue">{runtime.mode === 'simulation' ? '可模拟在线/离线' : '外部状态由边缘网关上报'}</Badge>
         </div>
@@ -37,7 +39,7 @@ export function Devices({
                   <div><strong>{device.name}</strong><span>{device.id} · {device.location}</span></div>
                 </div>
                 <div className="device-meta">
-                  <Badge tone={device.online ? 'good' : 'danger'}>{device.online ? '在线' : '离线'}</Badge>
+                  <Badge tone={device.online ? 'good' : 'danger'}>{runtime.mode === 'simulation' ? '模拟' : ''}{device.online ? '在线' : '离线'}</Badge>
                   {device.battery !== undefined && <span><Battery size={16} />{device.battery}%</span>}
                   {actuator && <span><ToggleLeft size={16} />目标 {actuator.target ? '开' : '关'} / 实际 {actuator.actual ? '运行' : '停止'}</span>}
                   <span>{device.online ? `状态更新 ${formatTimestamp(device.updatedAt)}` : '数据/控制已中断'}</span>

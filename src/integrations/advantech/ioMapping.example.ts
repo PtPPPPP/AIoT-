@@ -1,6 +1,6 @@
 import { AnalogInputMapping, DigitalInputMapping, DigitalOutputMapping } from './types';
 
-/** 仅为项目规划示例。实际通道、输入类型、量程和换算关系必须根据最终接线及研华配置确认。 */
+/** 仅为禁用的规划示例。通道从 0 开始编号，量程、有效电平与安全状态须按最终接线确认。 */
 export const wise4012ExampleMappings: AnalogInputMapping[] = [
   { logicalKey: 'soilMoisture', deviceId: 'WISE-4012-01', model: 'WISE-4012', channelType: 'analog-input', channelIndex: 0, rawRange: [4, 20], engineeringRange: [0, 100], unit: '%', scale: 6.25, offset: -25, enabled: false },
   { logicalKey: 'temperature', deviceId: 'WISE-4012-01', model: 'WISE-4012', channelType: 'analog-input', channelIndex: 1, rawRange: [4, 20], engineeringRange: [-20, 60], unit: '°C', enabled: false },
@@ -15,5 +15,11 @@ export const adam6050OutputExampleMappings: DigitalOutputMapping[] = [
   { logicalDevice: 'shade', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', activeHigh: true, safeState: false, enabled: false, extendChannel: 3, retractChannel: 4, interlockGroup: 'shade-motion' },
 ];
 export const adam6050InputExampleMappings: DigitalInputMapping[] = [
-  { logicalInput: 'waterPumpRunning', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'fanRunning', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'shadeExtendedLimit', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'shadeRetractedLimit', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'lowWaterLevel', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'emergencyStop', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false }, { logicalInput: 'deviceFault', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', enabled: false },
+  { logicalInput: 'waterPumpRunning', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 0, enabled: false },
+  { logicalInput: 'fanRunning', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 1, enabled: false },
+  { logicalInput: 'shadeExtendedLimit', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 2, enabled: false },
+  { logicalInput: 'shadeRetractedLimit', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 3, enabled: false },
+  { logicalInput: 'lowWaterLevel', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 4, enabled: false },
+  { logicalInput: 'emergencyStop', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 5, enabled: false },
+  { logicalInput: 'deviceFault', deviceId: 'ADAM-6050-01', model: 'ADAM-6050', inputChannel: 6, enabled: false },
 ];

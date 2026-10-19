@@ -47,3 +47,27 @@ test('快照导出、报警导出与答辩复位可用', async ({ page, baseURL 
   await page.getByRole('button', { name: /导出全部/ }).click();
   expect((await alarm).suggestedFilename()).toContain('温室报警');
 });
+
+test('三款实有硬件、通道缺口和移动端布局可查看', async ({ page, baseURL }, testInfo) => {
+  await page.goto(baseURL.endsWith('/') ? `${baseURL}index.html` : baseURL);
+  await page.getByRole('button', { name: '设备管理' }).click();
+  const hardware = page.getByRole('region', { name: '现有硬件与接入规划' });
+  await expect(hardware.getByText('已持有', { exact: true })).toHaveCount(3);
+  await expect(hardware.getByRole('heading', { name: /WISE-4012 ·/ })).toBeVisible();
+  await expect(hardware.getByRole('heading', { name: /ADAM-6050 ·/ })).toBeVisible();
+  await expect(hardware.getByRole('heading', { name: /EKI-2525 ·/ })).toBeVisible();
+  await expect(hardware.getByText(/未分配 · .*4 路已占用/)).toBeVisible();
+  await expect(hardware.getByRole('switch')).toHaveCount(0);
+  await expect(page.getByText('LoRa/4G网关', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('hardware-desktop.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const card of await hardware.locator('article').all()) {
+    const box = await card.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+  }
+  await page.screenshot({ path: testInfo.outputPath('hardware-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: '项目介绍' }).click();
+  await expect(page.getByRole('region', { name: '现有硬件与接入规划' }).getByText('已持有', { exact: true })).toHaveCount(3);
+});
