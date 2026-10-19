@@ -17,7 +17,7 @@ export function HardwareOverview({ showMappings = false }: { showMappings?: bool
   return (
     <section className="panel hardware-overview" aria-label="现有硬件与接入规划">
       <div className="section-title">
-        <div><h2>现有硬件与接入规划</h2><p>已持有三款设备，尚未完成实机接入；持有状态不代表在线，也不计入仿真在线率。</p></div>
+        <div><h2>现有硬件与接入规划</h2><p>清单记录三款已持有设备；当前仓库不足以判断现场接入结果。持有状态不代表在线，下方映射仅为禁用示例。</p></div>
         <Badge tone="warn">接线与通信待验证</Badge>
       </div>
       <div className="intro-grid">

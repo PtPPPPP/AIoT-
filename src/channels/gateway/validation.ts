@@ -13,11 +13,12 @@ export function parseGatewaySensorPacket(value: unknown): GatewaySensorPacket | 
   const item = record(value); if (!item || item.schemaVersion !== gatewaySchemaVersion || !sensorKeys.includes(item.key as SensorKey) || !finiteOrNull(item.value) || !qualities.includes(item.quality as SensorQuality)) return null;
   if (!text(item.eventId) || !Number.isInteger(item.sequence) || !text(item.source) || !text(item.gatewayId) || !text(item.deviceId) || !text(item.channelId) || !text(item.sensorId) || !text(item.unit) || !timestamp(item.capturedAt) || !timestamp(item.receivedAt) || typeof item.valid !== 'boolean') return null;
   if ((item.quality === 'good') !== item.valid || (item.valid && item.value === null)) return null;
+  if (item.sourceKind !== undefined && !['hardware', 'simulation', 'playback', 'unknown'].includes(String(item.sourceKind))) return null;
   if (item.rawValue !== undefined && (typeof item.rawValue !== 'number' || !Number.isFinite(item.rawValue))) return null;
   return item as GatewaySensorPacket;
 }
 
 export function parseGatewayControlResponse(value: unknown): GatewayControlResponse | null {
-  const item = record(value); if (!item || item.schemaVersion !== gatewaySchemaVersion || !text(item.commandId) || !text(item.idempotencyKey) || !statuses.includes(item.status as GatewayControlResponse['status']) || typeof item.target !== 'boolean' || typeof item.actual !== 'boolean') return null;
+  const item = record(value); if (!item || item.schemaVersion !== gatewaySchemaVersion || !text(item.commandId) || !text(item.idempotencyKey) || !statuses.includes(item.status as GatewayControlResponse['status']) || typeof item.target !== 'boolean' || (item.actual !== undefined && typeof item.actual !== 'boolean')) return null;
   return item as GatewayControlResponse;
 }

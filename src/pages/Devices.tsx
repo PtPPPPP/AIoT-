@@ -1,26 +1,32 @@
-import { Battery, Camera, Cpu, RadioTower, ToggleLeft } from '../components/Icons';
+import { useEffect } from 'react';
+import { RuntimeStatus } from '../components/RuntimeStatus';
+import { ActuatorFeedback } from '../components/ActuatorFeedback';
+import { originLabels } from '../utils/runtimeStatus';
+import { Battery, Camera, Cpu, RadioTower } from '../components/Icons';
 import { Badge, Switch } from '../components/Status';
-import { ActuatorStates, Device, SimulatorState } from '../types';
+import { ActuatorStates, Device, SensorStates, SimulatorState } from '../types';
 import { formatTimestamp } from '../utils/greenhouse';
-import { edgeNodeTypeLabel } from '../config/edgeNodeConfig';
 import { HardwareOverview } from '../components/HardwareOverview';
 
 export function Devices({
   devices,
   actuators,
   toggleDeviceOnline,
-  runtime,
+  runtime, sensors, focus,
 }: {
   devices: Device[];
   actuators: ActuatorStates;
   toggleDeviceOnline: (id: string) => void;
   runtime: SimulatorState['runtime'];
+  sensors?: SensorStates;
+  focus?: string;
 }) {
+  useEffect(() => { if (focus) document.querySelector('[data-focused="true"]')?.scrollIntoView?.({ block: 'center' }); }, [focus]);
   return (
     <div className="page-grid">
       <HardwareOverview showMappings />
       <section className="panel">
-        <p>运行模式：{runtime.mode === 'simulation' ? '答辩演示' : runtime.mode} · 边缘节点：{runtime.edgeNodeName}（{edgeNodeTypeLabel(runtime.edgeNodeType)}）· 数据来源：{runtime.dataSourceLabel}（{runtime.dataChannelStatus}）· 控制通道：{runtime.controlSourceLabel}（{runtime.controlChannelStatus}）· AI 来源：{runtime.aiSourceLabel}</p>
+        {sensors && <RuntimeStatus runtime={runtime} sensors={sensors} />}
         <div className="section-title">
           <div>
             <h2>{runtime.mode === 'simulation' ? '仿真业务设备管理' : '网关业务设备状态'}</h2>
@@ -33,16 +39,17 @@ export function Devices({
           {devices.map((device) => {
             const actuator = device.actuatorKey ? actuators[device.actuatorKey] : null;
             return (
-              <div className={`device-row ${device.online ? '' : 'device-offline-row'}`} key={device.id}>
+              <div className={`device-row ${device.online ? '' : 'device-offline-row'}`} key={device.id} data-focused={focus === device.id || focus === device.actuatorKey}>
                 <div className="device-main">
                   <span className={`device-kind ${device.online ? 'online' : 'offline'}`}>{iconFor(device.kind)}</span>
-                  <div><strong>{device.name}</strong><span>{device.id} · {device.location}</span></div>
+                  <div><strong>{device.name}</strong><span>{device.location}{runtime.mode === 'external' ? '（配置位置，未现场核实）' : ''}</span><details><summary>设备标识</summary>{device.reportedId ?? device.id}</details></div>
                 </div>
                 <div className="device-meta">
-                  <Badge tone={device.online ? 'good' : 'danger'}>{runtime.mode === 'simulation' ? '模拟' : ''}{device.online ? '在线' : '离线'}</Badge>
-                  {device.battery !== undefined && <span><Battery size={16} />{device.battery}%</span>}
-                  {actuator && <span><ToggleLeft size={16} />目标 {actuator.target ? '开' : '关'} / 实际 {actuator.actual ? '运行' : '停止'}</span>}
-                  <span>{device.online ? `状态更新 ${formatTimestamp(device.updatedAt)}` : '数据/控制已中断'}</span>
+                  <Badge tone={device.online ? 'good' : 'danger'}>{device.statusKnown === false ? '状态未知／过期' : device.online ? '在线' : '离线'}</Badge>
+                  {runtime.mode === 'simulation' && device.battery !== undefined && <span><Battery size={16} />{device.battery}%</span>}
+                  <span>{originLabels[device.sourceKind ?? 'unknown']}</span>
+                  {actuator && <ActuatorFeedback state={actuator} />}
+                  <span>{device.updatedAt ? '状态更新 ' + formatTimestamp(device.updatedAt) : '无状态采样'}</span>
                   <Switch label={`切换${device.name}在线状态`} checked={device.online} onChange={() => toggleDeviceOnline(device.id)} disabled={runtime.mode !== 'simulation'} />
                 </div>
               </div>

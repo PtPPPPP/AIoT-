@@ -58,7 +58,7 @@ export class EdgeGatewayAiInferenceChannel implements AiInferenceChannel {
   constructor(
     private readonly baseUrl: string,
     private readonly requestTimeoutMs: number,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (...args) => globalThis.fetch(...args),
     private readonly imageEncoder: ImageEncoder = encodeImage,
     private readonly createRequestId: () => string = () => crypto.randomUUID(),
   ) {}
@@ -66,8 +66,8 @@ export class EdgeGatewayAiInferenceChannel implements AiInferenceChannel {
   async recognize(file: File, scenario: DemoScenarioId): Promise<RecognitionResult> {
     void scenario;
     const startedAt = performance.now();
-    if (!file.type.startsWith('image/') || file.size === 0) {
-      throw new Error('边缘 AI 推理只接受非空图片。');
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size === 0 || file.size > 5 * 1024 * 1024) {
+      throw new Error('边缘 AI 推理只接受不超过 5 MB 的 JPEG、PNG、WebP 或 GIF 图片。');
     }
     const encoded = await this.imageEncoder(file);
     const requestId = this.createRequestId();
@@ -104,7 +104,7 @@ export class EdgeGatewayAiInferenceChannel implements AiInferenceChannel {
         severity: 'info',
         description: primary
           ? `结果来自已配置的边缘网关推理服务，共返回 ${result.detections.length} 个检测项。`
-          : '已配置的边缘网关推理服务未返回检测项。',
+          : '已配置的边缘网关推理服务未返回检测项，不能据此判定作物健康；请重新拍摄并现场复查。',
         recommendations: ['AI 结果仅用于识别、报警和建议', '控制动作仍由确定性规则和人工确认决定'],
         processingTimeMs: Math.max(1, Math.round(performance.now() - startedAt)),
         contentFingerprint: encoded.fingerprint,

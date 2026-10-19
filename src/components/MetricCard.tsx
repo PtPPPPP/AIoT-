@@ -10,19 +10,19 @@ type MetricCardProps = {
   trend?: 'up' | 'down';
 };
 
-export function MetricCard({ label, value, unit, hint, risk = '正常', trend = 'up' }: MetricCardProps) {
+export function MetricCard({ label, value, unit, hint, risk, trend }: MetricCardProps) {
   const TrendIcon = trend === 'up' ? ArrowUpRight : ArrowDownRight;
   return (
-    <section className={`metric-card ${risk !== '正常' ? 'is-alert' : ''}`}>
+    <section className={`metric-card ${risk && risk !== '正常' ? 'is-alert' : ''}`}>
       <div className="metric-head">
         <span>{label}</span>
-        <span className={`risk-dot ${riskClass(risk)}`}>{risk}</span>
+        {risk && <span className={`risk-dot ${riskClass(risk)}`}>{risk}</span>}
       </div>
       <div className="metric-value">
         {value}
         {unit && <small>{unit}</small>}
       </div>
-      <p><TrendIcon size={15} />{hint}</p>
+      <p>{trend && <TrendIcon size={15} />}{hint}</p>
     </section>
   );
 }

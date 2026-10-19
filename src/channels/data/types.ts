@@ -1,4 +1,4 @@
-import { ChannelStatus, SensorKey, SensorQuality } from '../../types';
+import { ChannelStatus, DataOrigin, SensorKey, SensorQuality } from '../../types';
 
 export type SensorPacket = {
   source: string;
@@ -11,6 +11,7 @@ export type SensorPacket = {
   quality: SensorQuality;
   valid: boolean;
   simulated: boolean;
+  sourceKind?: DataOrigin;
   error?: string;
 };
 

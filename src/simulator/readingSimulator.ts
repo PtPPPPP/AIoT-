@@ -44,6 +44,9 @@ export function simulateReading(
       quality: 'good',
       lastValue: candidates[key],
       lastUpdatedAt: now,
+      capturedAt: now,
+      receivedAt: now,
+      sourceKind: 'simulation',
     };
   }
 
@@ -52,6 +55,7 @@ export function simulateReading(
       time: date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       capturedAt: now,
       ...values,
+      origins: Object.fromEntries(sensorKeys.map(k => [k, 'simulation' as const])),
     },
     sensors: nextSensors,
   };

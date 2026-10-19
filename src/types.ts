@@ -23,6 +23,9 @@ export type Device = {
   kind: DeviceKind;
   location: string;
   online: boolean;
+  statusKnown?: boolean;
+  sourceKind?: DataOrigin;
+  reportedId?: string;
   battery?: number;
   updatedAt: string;
   sensorKeys?: SensorKey[];
@@ -37,6 +40,8 @@ export type Reading = {
   light: number | null;
   soilMoisture: number | null;
   co2: number | null;
+  origins?: Partial<Record<SensorKey, DataOrigin>>;
+  sampleKey?: SensorKey;
 };
 
 export type SensorState = {
@@ -45,8 +50,13 @@ export type SensorState = {
   quality: SensorQuality;
   lastValue: number;
   lastUpdatedAt: string;
+  capturedAt?: string;
+  receivedAt?: string;
+  sourceKind?: DataOrigin;
+  source?: string;
 };
 
+export type DataOrigin = 'simulation' | 'hardware' | 'playback' | 'unknown';
 export type SensorQuality = 'good' | 'stale' | 'offline' | 'invalid' | 'error';
 export type ChannelStatus = 'unconfigured' | 'connecting' | 'connected' | 'degraded' | 'disconnected' | 'failed' | 'stale' | 'partial-offline';
 export type RuntimeMode = 'simulation' | 'external' | 'playback';
@@ -60,6 +70,10 @@ export type ActuatorState = {
   commandStatus: 'applied' | 'blocked';
   executionStatus: 'pending' | 'sent' | 'acknowledged' | 'succeeded' | 'failed' | 'timed_out' | 'rejected' | 'cancelled';
   blockedReason?: string;
+  actualUpdatedAt?: string;
+  feedbackLevel?: 'physical' | 'output' | 'gateway' | 'simulation';
+  sourceKind?: DataOrigin;
+  commandId?: string;
 };
 
 export type ActuatorStates = Record<DeviceStateKey, ActuatorState>;
@@ -85,7 +99,21 @@ export type Alarm = {
   scenario?: PresentationScenarioId;
   simulationStep?: number;
   handlingResult?: string;
+  handlingRecords?: Array<{ at: string; note: string; completed: boolean }>;
+  context?: { location: string; deviceKeys: DeviceStateKey[]; actions: string[] };
 };
+
+export type ControlRecord = {
+  id: string;
+  at: string;
+  device: DeviceStateKey;
+  target: boolean;
+  status: ActuatorState['executionStatus'];
+  reason: string;
+  actual?: boolean;
+  error?: string;
+};
+export type AiReview = { at: string; fingerprint: string; mode: RecognitionResult['mode']; label: string; decision: 'confirmed' | 'corrected' | 'recheck'; note: string };
 
 export type DemoScenarioId = 'healthy' | 'early-risk' | 'severe-risk';
 
@@ -143,6 +171,9 @@ export type SimulatorState = {
   alarms: Alarm[];
   efficiency: EfficiencyCounters;
   irrigationCount: number;
+  irrigationStarts: string[];
+  controlRecords: ControlRecord[];
+  aiReviews: AiReview[];
   demoScenario: DemoScenarioId;
   presentation: PresentationState;
   runtime: {
@@ -159,6 +190,7 @@ export type SimulatorState = {
     controlArmed: boolean;
     lastHealthCheckAt?: string;
     lastValidDataAt?: string;
+    lastError?: string;
   };
   operationLog: OperationLogEntry[];
   lastUpdatedAt: string;

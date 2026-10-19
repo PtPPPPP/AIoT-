@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { calculateEfficiencyMetrics } from '../simulator/metricsEngine';
-import { persistenceKey, restoreState, saveState } from '../simulator/persistence';
+import { storageKey, restoreState, saveState } from '../simulator/persistence';
 import { simulationIntervalMs } from '../simulator/policy';
 import { createInitialSimulatorState, simulatorReducer } from '../simulator/simulatorReducer';
 import { createSeed } from '../simulator/random';
@@ -11,18 +11,21 @@ import { EdgeGatewayDataChannel } from '../channels/data/EdgeGatewayDataChannel'
 import { EdgeGatewayControlChannel } from '../channels/control/EdgeGatewayControlChannel';
 import { exportDemoSnapshot, parseDemoSnapshot } from '../snapshots/demoSnapshot';
 import { downloadText, exportCsv } from '../utils/exportFile';
+import { runtimeConfig } from '../config/runtimeConfig';
+import { controlAvailable, controlReason, localDay } from '../utils/runtimeStatus';
 import { DemoScenarioId, DeviceStateKey, PresentationScenarioId, RecognitionResult } from '../types';
 
 function initializeState() {
   const initial = createInitialSimulatorState(new Date().toISOString());
   try {
-    return restoreState(initial, window.localStorage.getItem(persistenceKey));
+    return restoreState(initial, window.localStorage.getItem(storageKey(initial.runtime.mode)));
   } catch {
     return initial;
   }
 }
 
 export function useGreenhouseSimulator() {
+  const [observedAt, setObservedAt] = useState(new Date().toISOString());
   const [state, dispatch] = useReducer(simulatorReducer, undefined, initializeState);
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -62,24 +65,28 @@ export function useGreenhouseSimulator() {
       },
     });
     const unsubscribe = runtime.mode === 'simulation' ? () => undefined : runtime.dataChannel.subscribe((packet: SensorPacket) => {
-      dispatch({ type: 'ingest-sensor-packet', key: packet.key, value: packet.value, quality: packet.quality, capturedAt: packet.capturedAt, sourceId: packet.sensorId });
+      dispatch({ type: 'ingest-sensor-packet', key: packet.key, value: packet.value, quality: packet.quality, capturedAt: packet.capturedAt, sourceId: packet.sensorId, sourceKind: packet.sourceKind, source: packet.source, receivedAt: packet.receivedAt });
     });
+    const onActuators = (items: import('../channels/data/EdgeGatewayDataChannel').ExternalActuatorSnapshot[]) => dispatch({ type: 'external-sync-actuators', actuators: items.map(item => ({ ...item, key: item.logicalDevice })), now: new Date().toISOString() });
+    const unsubscribeActuators = runtime.dataChannel instanceof EdgeGatewayDataChannel ? runtime.dataChannel.subscribeActuators(onActuators) : () => undefined;
     const unsubscribeDataStatus = runtime.dataChannel.subscribeStatus((status) => dispatch({ type: 'set-channel-status', channel: 'data', status }));
     const unsubscribeControlStatus = runtime.controlChannel.subscribeStatus((status) => dispatch({ type: 'set-channel-status', channel: 'control', status }));
     let cancelled = false;
-    void (async () => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const connect = async () => {
       if (runtime.mode === 'external' && runtime.dataChannel instanceof EdgeGatewayDataChannel && runtime.controlChannel instanceof EdgeGatewayControlChannel) {
         dispatch({ type: 'external-sync-status', status: 'checking_health' });
         try {
           const snapshots = await runtime.dataChannel.synchronizeInitialState(); if (cancelled) return;
           dispatch({ type: 'external-sync-status', status: 'syncing_actuators' });
-          dispatch({ type: 'external-sync-actuators', actuators: snapshots.map((item) => ({ key: item.logicalDevice, actual: item.actual, target: item.target, online: item.online, updatedAt: item.updatedAt })), now: new Date().toISOString() });
+          dispatch({ type: 'external-sync-actuators', actuators: snapshots.map((item) => ({ ...item, key: item.logicalDevice })), now: new Date().toISOString() });
           runtime.controlChannel.markReady(runtime.dataChannel.getStatus()); dispatch({ type: 'external-sync-status', status: 'ready', now: new Date().toISOString() });
           await runtime.dataChannel.connect();
-        } catch { if (!cancelled) dispatch({ type: 'external-sync-status', status: 'failed' }); }
+        } catch (error) { if (!cancelled) { dispatch({ type: 'external-sync-status', status: 'failed', error: error instanceof Error ? error.message : '连接失败' }); retryTimer = setTimeout(() => { void connect(); }, 5000); } }
       } else { await runtime.dataChannel.connect(); await runtime.controlChannel.connect(); }
-    })();
-    return () => { cancelled = true; unsubscribe(); unsubscribeDataStatus(); unsubscribeControlStatus(); void runtime.dataChannel.disconnect(); void runtime.controlChannel.disconnect(); };
+    };
+    void connect();
+    return () => { cancelled = true; clearTimeout(retryTimer); unsubscribeActuators(); unsubscribe(); unsubscribeDataStatus(); unsubscribeControlStatus(); void runtime.dataChannel.disconnect(); void runtime.controlChannel.disconnect(); };
   }, []);
 
   useEffect(() => {
@@ -90,19 +97,31 @@ export function useGreenhouseSimulator() {
 
   useEffect(() => {
     const runtime = channels.current;
-    if (!runtime || runtime.mode === 'playback') return;
+    if (!runtime || runtime.mode !== 'external') return;
     const previous = sentTargets.current;
     const current = Object.fromEntries(Object.entries(state.actuators).map(([key, actuator]) => [key, actuator.target])) as Record<DeviceStateKey, boolean>;
     sentTargets.current = current;
+    if (!controlAvailable(state.runtime)) return;
     for (const key of Object.keys(current) as DeviceStateKey[]) {
-      if (previous?.[key] === current[key] || state.actuators[key].commandStatus === 'blocked') continue;
-      if (runtime.mode === 'external' && (!state.runtime.controlArmed || state.runtime.externalInitialSyncStatus !== 'ready' || !state.actuators[key].actualKnown || state.actuators[key].actual === current[key] || !['connected', 'degraded'].includes(state.runtime.controlChannelStatus))) continue;
-      const deviceOnline = state.devices.some((device) => device.actuatorKey === key && device.online);
-      const command = { id: `${key}:${state.lastUpdatedAt}`, device: key, target: current[key], source: state.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, createdAt: state.lastUpdatedAt, timeoutAt: new Date(new Date(state.lastUpdatedAt).getTime() + 3_000).toISOString(), scenario: state.presentation.scenarioId, idempotencyKey: `${key}:${current[key]}:${state.controlMode}:${state.lastUpdatedAt}` };
-      if (!deviceOnline) { dispatch({ type: 'control-command-result', key, target: current[key], actual: state.actuators[key].actual, status: 'rejected', error: '执行器离线，控制指令未执行' }); continue; }
-      void runtime.controlChannel.execute(command, deviceOnline).then((result) => dispatch({ type: 'control-command-result', key, target: current[key], actual: result.actual, status: result.status, ...(result.error ? { error: result.error } : {}) })).finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
+      const actuator = state.actuators[key];
+      if (previous?.[key] === current[key] || actuator.commandStatus === 'blocked') continue;
+      if (runtime.mode === 'external' && (!actuator.actualKnown || actuator.actual === current[key] || !actuator.actualUpdatedAt || Date.now() - Date.parse(actuator.actualUpdatedAt) > runtimeConfig.staleAfterMs)) continue;
+      const deviceOnline = state.devices.some(device => device.actuatorKey === key && device.online && device.statusKnown !== false);
+      const now = new Date().toISOString();
+      const command = { id: crypto.randomUUID(), device: key, target: current[key], source: state.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, createdAt: now, timeoutAt: new Date(Date.parse(now) + runtimeConfig.requestTimeoutMs).toISOString(), scenario: state.presentation.scenarioId, idempotencyKey: crypto.randomUUID() };
+      if (!deviceOnline) continue;
+      dispatch({ type: 'control-command-start', record: { id: command.id, at: now, device: key, target: current[key], status: 'sent', reason: controlReason(key, state.controlMode, state.reading, state.sensors) } });
+      void runtime.controlChannel.execute(command, deviceOnline).then(result => dispatch({ type: 'control-command-result', key, target: current[key], actual: result.actual, status: result.status, error: result.error, now: new Date().toISOString(), commandId: command.id })).finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
     }
-  }, [state.actuators, state.controlMode, state.devices, state.lastUpdatedAt, state.presentation.scenarioId, state.runtime]);
+  }, [state.actuators, state.controlMode, state.devices, state.presentation.scenarioId, state.runtime, state.reading, state.sensors]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().toISOString(); setObservedAt(now);
+      dispatch({ type: 'expire-data', now, staleAfterMs: runtimeConfig.staleAfterMs });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (state.runtime.mode === 'simulation' && state.presentation.runStatus === 'running') clock.current?.start();
@@ -121,11 +140,12 @@ export function useGreenhouseSimulator() {
     const efficiency = calculateEfficiencyMetrics(state.efficiency);
     return {
       unresolved,
-      irrigationCount: state.irrigationCount,
-      onlineRate: Math.round((state.devices.filter((device) => device.online).length / state.devices.length) * 100),
+      irrigationCount: state.irrigationStarts.filter(at => localDay(at) === localDay(observedAt)).length,
+      onlineRate: Math.round((state.devices.filter((device) => device.online && device.statusKnown !== false).length / state.devices.length) * 100),
       ...efficiency,
+      ...(state.runtime.mode !== 'simulation' ? { waterSaving: null, energySaving: null, explanation: '无流量计、电表与可信基线；未计量节水节能。' } : {}),
     };
-  }, [state.alarms, state.devices, state.efficiency, state.irrigationCount]);
+  }, [state.alarms, state.devices, state.efficiency, state.irrigationStarts, state.runtime.mode, observedAt]);
 
   const setControlMode = useCallback((mode: 'auto' | 'manual') => {
     dispatch({ type: 'set-control-mode', mode, now: new Date().toISOString() });
@@ -215,9 +235,10 @@ export function useGreenhouseSimulator() {
   }, []);
 
   const resetDemoData = useCallback(() => {
+    if (channels.current?.mode !== 'simulation') return false;
     if (!window.confirm('确定重置所有演示设置、报警和设备状态吗？此操作不可撤销。')) return false;
     try {
-      window.localStorage.removeItem(persistenceKey);
+      window.localStorage.removeItem(storageKey('simulation'));
     } catch {
       setPersistenceError('本地存储无法访问，应用已重置但刷新后可能无法保留。');
     }
@@ -230,6 +251,7 @@ export function useGreenhouseSimulator() {
   }, []);
 
   const debateReset = useCallback(() => {
+    if (channels.current?.mode !== 'simulation') return;
     if (isDebateResetting || !window.confirm('确认答辩复位？将回到“正常运行”、固定种子和暂停状态；历史已恢复报警与操作记录会保留。')) return;
     setIsDebateResetting(true);
     clock.current?.pause();
@@ -245,6 +267,7 @@ export function useGreenhouseSimulator() {
   }, [state]);
 
   const importSnapshot = useCallback(async (file: File) => {
+    if (channels.current?.mode !== 'simulation') { setActionMessage('外部接入与回放禁止导入演示快照。'); return; }
     try {
       const snapshot = parseDemoSnapshot(await file.text());
       clock.current?.pause();
@@ -261,6 +284,12 @@ export function useGreenhouseSimulator() {
 
   return {
     ...state,
+    observedAt,
+    handleAlarm: (id: string, note: string, completed: boolean) => dispatch({ type: 'handle-alarm', id, note, completed, now: new Date().toISOString() }),
+    reviewAi: (decision: 'confirmed' | 'corrected' | 'recheck', note: string) => {
+      if (aiResult) dispatch({ type: 'review-ai', review: { at: new Date().toISOString(), fingerprint: aiResult.contentFingerprint, mode: aiResult.mode, label: aiResult.label, decision, note: note.trim().slice(0, 2000) } });
+    },
+    armControl: (armed: boolean) => dispatch({ type: 'arm-control', armed }),
     stats,
     aiStage,
     aiResult,

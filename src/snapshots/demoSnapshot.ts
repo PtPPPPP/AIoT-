@@ -1,3 +1,5 @@
+import { createInitialSimulatorState } from '../simulator/simulatorReducer';
+import { restoreState, serializeState, validEvidence } from '../simulator/persistence';
 import { SimulatorState } from '../types';
 
 export const snapshotVersion = 2;
@@ -34,5 +36,12 @@ export function parseDemoSnapshot(raw: string): DemoSnapshot {
   ) {
     throw new Error('快照运行配置无效。');
   }
-  return value as DemoSnapshot;
+  if (state.runtime.mode !== 'simulation') throw new Error('演示快照只能包含仿真状态，禁止导入外部接入或回放运行配置。');
+  if (!Number.isFinite(Date.parse(state.lastUpdatedAt ?? ''))) throw new Error('快照时间无效。');
+  const merged = { ...createInitialSimulatorState(state.lastUpdatedAt!, 'simulation'), ...state, controlRecords: state.controlRecords ?? [], irrigationStarts: state.irrigationStarts ?? [], aiReviews: state.aiReviews ?? [], operationLog: state.operationLog ?? [] } as SimulatorState;
+  if (!validEvidence(merged)) throw new Error('快照历史或操作记录无效。');
+  const initial = createInitialSimulatorState(state.lastUpdatedAt!, 'simulation');
+  const restored = restoreState(initial, serializeState(merged));
+  if (restored === initial) throw new Error('快照业务状态无效。');
+  return { snapshotVersion, createdAt: value.createdAt ?? new Date().toISOString(), state: { ...restored, runtime: initial.runtime } };
 }

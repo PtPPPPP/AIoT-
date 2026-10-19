@@ -12,8 +12,11 @@ import {
   RecognitionResult,
   PresentationScenarioId,
   SimulatorState,
+  AiReview,
+  ControlRecord,
+  DataOrigin,
 } from '../types';
-import { acknowledgeAlarm, applyRecognitionAlarm, collectSystemAlarmConditions, reconcileSystemAlarms } from './alarmEngine';
+import { acknowledgeAlarm, applyRecognitionAlarm } from './alarmEngine';
 import { applySimulationResults, decideAutomaticTargets, planActuatorTargets } from './controlEngine';
 import { runtimeConfig, isExternalConfigured } from '../config/runtimeConfig';
 import { edgeNodeConfig, aiProviderLabel, effectiveAiProvider } from '../config/edgeNodeConfig';
@@ -21,13 +24,20 @@ import { emptyEfficiencyCounters, updateEfficiencyCounters } from './metricsEngi
 import { simulateReading } from './readingSimulator';
 import { createPresentationState, preparePresentationFrame } from './presentationScenarios';
 import { randomSequence } from './random';
+import { reconcileEvidence, recordSimulationTransition } from './stateEvidence';
+import { controlAvailable, deviceKeys, inputs, sensorKeys } from '../utils/runtimeStatus';
 
 function withLog(state: SimulatorState, type: string, target: string, now: string, result: 'succeeded' | 'failed' | 'rejected' = 'succeeded'): SimulatorState {
-  const entry = { id: `${type}:${now}`, at: now, simulationStep: state.presentation.step, type, source: 'user' as const, target, before: '已记录前态', after: '已记录后态', result };
+  const entry = { id: `${type}:${now}`, at: now, simulationStep: state.presentation.step, type, source: 'user' as const, target, before: '未保存操作前快照', after: JSON.stringify({ controlMode: state.controlMode, targets: Object.fromEntries(deviceKeys.map(k => [k, state.actuators[k].target])), execution: Object.fromEntries(deviceKeys.map(k => [k, state.actuators[k].executionStatus])) }), result };
   return { ...state, operationLog: [...state.operationLog, entry].slice(-200) };
 }
 
 export type SimulatorAction =
+  | { type: 'expire-data'; now: string; staleAfterMs: number }
+  | { type: 'arm-control'; armed: boolean }
+  | { type: 'handle-alarm'; id: string; note: string; completed: boolean; now: string }
+  | { type: 'review-ai'; review: AiReview }
+  | { type: 'control-command-start'; record: ControlRecord }
   | { type: 'tick'; now: string; randomValues: number[] }
   | { type: 'set-control-mode'; mode: SimulatorState['controlMode']; now: string }
   | { type: 'toggle-manual-target'; key: DeviceStateKey; now: string }
@@ -43,12 +53,12 @@ export type SimulatorAction =
   | { type: 'import-snapshot'; state: SimulatorState; now: string }
   | { type: 'debate-reset'; now: string }
   | { type: 'reset'; now: string }
-  | { type: 'control-command-result'; key: DeviceStateKey; target: boolean; actual?: boolean; status: SimulatorState['actuators'][DeviceStateKey]['executionStatus']; error?: string }
+  | { type: 'control-command-result'; key: DeviceStateKey; target: boolean; actual?: boolean; status: SimulatorState['actuators'][DeviceStateKey]['executionStatus']; error?: string; now?: string; commandId?: string }
   | { type: 'set-channel-status'; channel: 'data' | 'control'; status: SimulatorState['runtime']['dataChannelStatus'] }
   | { type: 'set-runtime'; runtime: SimulatorState['runtime'] }
-  | { type: 'external-sync-status'; status: SimulatorState['runtime']['externalInitialSyncStatus']; now?: string }
-  | { type: 'external-sync-actuators'; actuators: Array<{ key: DeviceStateKey; actual?: boolean; target?: boolean; online: boolean; updatedAt: string }>; now: string }
-  | { type: 'ingest-sensor-packet'; key: keyof SimulatorState['sensors']; value: number | null; quality: SimulatorState['sensors'][keyof SimulatorState['sensors']]['quality']; capturedAt: string; sourceId: string };
+  | { type: 'external-sync-status'; status: SimulatorState['runtime']['externalInitialSyncStatus']; now?: string; error?: string }
+  | { type: 'external-sync-actuators'; actuators: Array<{ key: DeviceStateKey; actual?: boolean; target?: boolean; online: boolean; updatedAt: string; feedbackLevel?: 'physical' | 'output' | 'gateway'; sourceKind?: DataOrigin }>; now: string }
+  | { type: 'ingest-sensor-packet'; key: keyof SimulatorState['sensors']; value: number | null; quality: SimulatorState['sensors'][keyof SimulatorState['sensors']]['quality']; capturedAt: string; sourceId: string; receivedAt?: string; sourceKind?: DataOrigin; source?: string };
 
 function seedHistory(now: string) {
   const base = new Date(now);
@@ -58,6 +68,7 @@ function seedHistory(now: string) {
       ...initialReading,
       time: date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       capturedAt: date.toISOString(),
+      origins: Object.fromEntries(sensorKeys.map(k => [k, 'simulation' as const])),
       temperature: Number((25.5 + Math.sin(index / 2) * 2.7 + index * 0.12).toFixed(1)),
       humidity: Math.round(67 - index * 0.8 + Math.cos(index) * 2),
       light: Math.round(12_000 + index * 1_300 + Math.sin(index) * 1_900),
@@ -67,11 +78,11 @@ function seedHistory(now: string) {
   });
 }
 
-export function createInitialSimulatorState(now: string): SimulatorState {
+export function createInitialSimulatorState(now: string, mode = runtimeConfig.mode): SimulatorState {
   const devices = initialDevices.map((device) => ({ ...device, updatedAt: now }));
   const sensors = Object.fromEntries(Object.entries(initialSensorStates).map(([key, sensor]) => [key, { ...sensor, lastUpdatedAt: now }])) as SimulatorState['sensors'];
-  const initialAiProvider = effectiveAiProvider(runtimeConfig.mode, edgeNodeConfig);
-  return {
+  const initialAiProvider = effectiveAiProvider(mode, edgeNodeConfig);
+  const state: SimulatorState = {
     reading: { ...initialReading, capturedAt: now },
     history: seedHistory(now),
     sensors,
@@ -82,47 +93,59 @@ export function createInitialSimulatorState(now: string): SimulatorState {
     alarms: structuredClone(initialAlarms),
     efficiency: { ...emptyEfficiencyCounters },
     irrigationCount: 0,
+    irrigationStarts: [], controlRecords: [], aiReviews: [],
     demoScenario: 'healthy',
     presentation: createPresentationState(),
     runtime: {
-      mode: runtimeConfig.mode,
+      mode: mode,
       edgeNodeType: edgeNodeConfig.type,
       edgeNodeName: edgeNodeConfig.displayName,
-      dataChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
-      controlChannelStatus: runtimeConfig.mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
-      dataSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '本地回放' : '本地模拟器',
-      controlSourceLabel: runtimeConfig.mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关控制通道' : '边缘网关未配置') : runtimeConfig.mode === 'playback' ? '回放控制禁用' : '模拟设备通道',
+      dataChannelStatus: mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
+      controlChannelStatus: mode === 'external' && !isExternalConfigured(runtimeConfig) ? 'unconfigured' : 'disconnected',
+      dataSourceLabel: mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关' : '边缘网关未配置') : mode === 'playback' ? '本地回放' : '本地模拟器',
+      controlSourceLabel: mode === 'external' ? (isExternalConfigured(runtimeConfig) ? '边缘网关控制通道' : '边缘网关未配置') : mode === 'playback' ? '回放控制禁用' : '模拟设备通道',
       aiProvider: initialAiProvider,
       aiSourceLabel: aiProviderLabel(initialAiProvider),
-      externalInitialSyncStatus: runtimeConfig.mode === 'external' ? 'idle' : 'ready', controlArmed: runtimeConfig.mode === 'simulation',
+      externalInitialSyncStatus: mode === 'external' ? 'idle' : 'ready', controlArmed: mode === 'simulation',
     },
     operationLog: [],
     lastUpdatedAt: now,
   };
+  if (mode !== 'simulation') {
+    state.history = []; state.alarms = [];
+    for (const key of sensorKeys) {
+      state.reading[key] = null;
+      state.sensors[key] = { ...state.sensors[key], quality: 'invalid', lastUpdatedAt: '', capturedAt: undefined, sourceKind: mode === 'playback' ? 'playback' : 'unknown' };
+    }
+    state.devices = state.devices.map(d => ({ ...d, online: false, statusKnown: false, battery: undefined, updatedAt: '', sourceKind: mode === 'playback' ? 'playback' : 'unknown' }));
+    state.actuators = Object.fromEntries(Object.entries(state.actuators).map(([key, a]) => [key, { ...a, actualKnown: false, executionStatus: 'cancelled', sourceKind: 'unknown' }])) as SimulatorState['actuators'];
+  } else {
+    state.sensors = Object.fromEntries(Object.entries(state.sensors).map(([key, s]) => [key, { ...s, sourceKind: 'simulation', capturedAt: now, receivedAt: now }])) as SimulatorState['sensors'];
+    state.devices = state.devices.map(d => ({ ...d, statusKnown: true, sourceKind: 'simulation' }));
+    state.actuators = Object.fromEntries(Object.entries(state.actuators).map(([key, a]) => [key, { ...a, actualUpdatedAt: now, feedbackLevel: 'simulation', sourceKind: 'simulation' }])) as SimulatorState['actuators'];
+  }
+  return state;
 }
 
 export function advanceSimulator(state: SimulatorState, now: string, randomValues: number[]): SimulatorState {
+  if (state.runtime.mode !== 'simulation') return state;
   const simulated = simulateReading(state.reading, state.sensors, state.devices, state.actuators, now, randomValues);
   const previousTargets = Object.fromEntries(Object.entries(state.actuators).map(([key, value]) => [key, value.target])) as SimulatorState['manualTargets'];
   const automatic = decideAutomaticTargets(simulated.reading, simulated.sensors, previousTargets);
   const planned = planActuatorTargets(state.controlMode, automatic, state.manualTargets, state.actuators);
   const actuators = state.runtime.mode === 'simulation' ? applySimulationResults(planned, state.devices) : planned;
-  const alarms = reconcileSystemAlarms(
-    state.alarms,
-    collectSystemAlarmConditions(simulated.reading, simulated.sensors, state.devices, actuators),
-    now,
-  );
-  return {
+  const alarms = state.alarms;
+  return recordSimulationTransition(state, reconcileEvidence({
     ...state,
     reading: simulated.reading,
     sensors: simulated.sensors,
     actuators,
     alarms,
-    history: [...state.history.slice(-23), simulated.reading],
+    history: [...state.history.slice(-499), simulated.reading],
     efficiency: updateEfficiencyCounters(state.efficiency, simulated.reading, actuators),
     irrigationCount: state.irrigationCount + (!state.actuators.waterPump.actual && actuators.waterPump.actual ? 1 : 0),
     lastUpdatedAt: now,
-  };
+  }, now), now);
 }
 
 export function advancePresentation(state: SimulatorState, now: string): SimulatorState {
@@ -155,14 +178,13 @@ function createScenarioState(
 function recalculateControl(state: SimulatorState, now: string): SimulatorState {
   const previousTargets = Object.fromEntries(Object.entries(state.actuators).map(([key, value]) => [key, value.target])) as SimulatorState['manualTargets'];
   const automatic = decideAutomaticTargets(state.reading, state.sensors, previousTargets);
-  const planned = planActuatorTargets(state.controlMode, automatic, state.manualTargets, state.actuators);
+  if (state.runtime.mode === 'external') for (const key of deviceKeys) {
+    if (inputs[key].some(k => state.sensors[k].sourceKind !== 'hardware')) automatic.blockedReasons[key] = '输入包含仿真、回放或未核实来源，禁止用于外部自动控制';
+  }
+  const planned = planActuatorTargets(state.controlMode, automatic, state.manualTargets, state.actuators, state.runtime.mode === 'external');
   const actuators = state.runtime.mode === 'simulation' ? applySimulationResults(planned, state.devices) : planned;
-  const alarms = reconcileSystemAlarms(
-    state.alarms,
-    collectSystemAlarmConditions(state.reading, state.sensors, state.devices, actuators),
-    now,
-  );
-  return { ...state, actuators, alarms, lastUpdatedAt: now };
+  const alarms = state.alarms;
+  return recordSimulationTransition(state, reconcileEvidence({ ...state, actuators, alarms, lastUpdatedAt: now }, now), now);
 }
 
 export function simulatorReducer(state: SimulatorState, action: SimulatorAction): SimulatorState {
@@ -170,8 +192,10 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     case 'tick':
       return advanceSimulator(state, action.now, action.randomValues);
     case 'set-control-mode':
-      return withLog(recalculateControl({ ...state, controlMode: action.mode }, action.now), '控制模式切换', action.mode, action.now);
+      if (!controlAvailable(state.runtime)) return state;
+      return withLog(recalculateControl({ ...state, controlMode: action.mode, manualTargets: action.mode === 'manual' ? Object.fromEntries(deviceKeys.map(k => [k, state.actuators[k].target])) as SimulatorState['manualTargets'] : state.manualTargets }, action.now), '控制模式切换', action.mode, action.now);
     case 'toggle-manual-target': {
+      if (!controlAvailable(state.runtime) || state.controlMode !== 'manual') return state;
       const manualTargets = { ...state.manualTargets, [action.key]: !state.manualTargets[action.key] };
       return withLog(recalculateControl({ ...state, manualTargets }, action.now), '手动设备控制', action.key, action.now);
     }
@@ -212,7 +236,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
       if (state.runtime.mode !== 'simulation') return state;
       return withLog(createScenarioState(state.presentation.scenarioId, action.seed, action.now, state.presentation.runStatus), '随机种子更新', action.seed, action.now);
     case 'import-snapshot':
-      if (state.runtime.mode !== 'simulation') return state;
+      if (state.runtime.mode !== 'simulation' || action.state.runtime.mode !== 'simulation') return state;
       return { ...action.state, operationLog: [...action.state.operationLog, { id: `snapshot-import:${action.now}`, at: action.now, simulationStep: action.state.presentation.step, type: '快照导入', source: 'user' as const, target: '演示快照', before: '当前状态', after: '已恢复快照状态', result: 'succeeded' as const }].slice(-200) };
     case 'debate-reset': {
       if (state.runtime.mode !== 'simulation') return state;
@@ -221,32 +245,76 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
       return withLog({ ...fresh, alarms: historicalAlarms, operationLog: state.operationLog }, '答辩复位', '统一答辩起点', action.now);
     }
     case 'reset':
+      if (state.runtime.mode !== 'simulation') return state;
       return createInitialSimulatorState(action.now);
     case 'set-runtime':
-      return { ...state, runtime: action.runtime };
+      return { ...(state.runtime.mode === action.runtime.mode ? state : createInitialSimulatorState(state.lastUpdatedAt, action.runtime.mode)), runtime: action.runtime };
     case 'set-channel-status':
-      return { ...state, runtime: action.channel === 'data' ? { ...state.runtime, dataChannelStatus: action.status } : { ...state.runtime, controlChannelStatus: action.status } };
+      return { ...state, runtime: { ...state.runtime, ...(action.channel === 'data' ? { dataChannelStatus: action.status } : { controlChannelStatus: action.status }), ...(state.runtime.mode === 'external' && ['failed', 'disconnected', 'stale', 'partial-offline'].includes(action.status) ? { controlArmed: false } : {}) } };
     case 'ingest-sensor-packet': {
-      const sensor = { ...state.sensors[action.key], sourceId: action.sourceId, quality: action.quality, status: action.quality === 'offline' ? 'offline' : 'live', lastUpdatedAt: action.capturedAt, ...(action.value === null ? {} : { lastValue: action.value }) };
-      const updated = { ...state, sensors: { ...state.sensors, [action.key]: sensor }, reading: { ...state.reading, [action.key]: action.value, capturedAt: action.capturedAt, time: new Date(action.capturedAt).toLocaleTimeString('zh-CN') }, lastUpdatedAt: action.capturedAt, runtime: { ...state.runtime, lastValidDataAt: action.quality === 'good' && action.value !== null ? action.capturedAt : state.runtime.lastValidDataAt } };
-      return updated.runtime.mode === 'external' ? recalculateControl(updated, action.capturedAt) : updated;
+      if (state.runtime.mode !== 'external') return state;
+      const previous = state.sensors[action.key];
+      if (previous.capturedAt && Date.parse(action.capturedAt) < Date.parse(previous.capturedAt)) return state;
+      const good = action.quality === 'good' && action.value !== null;
+      const sensor = { ...previous, sourceId: action.sourceId, source: action.source, sourceKind: action.sourceKind ?? 'unknown' as const, quality: action.quality, status: action.quality === 'offline' ? 'offline' as const : 'live' as const, capturedAt: action.capturedAt, receivedAt: action.receivedAt, ...(good ? { lastValue: action.value!, lastUpdatedAt: action.capturedAt } : {}) };
+      const reading = { ...state.reading, [action.key]: good ? action.value : null, capturedAt: action.capturedAt, time: new Date(action.capturedAt).toLocaleTimeString('zh-CN') };
+      const history = previous.capturedAt === action.capturedAt ? state.history : [...state.history, { ...reading, ...Object.fromEntries(sensorKeys.map(k => [k, k === action.key && good ? action.value : null])), origins: { [action.key]: sensor.sourceKind }, sampleKey: action.key }].slice(-500);
+      const updated = { ...state, history, devices: state.devices.map(d => d.sensorKeys?.includes(action.key) ? { ...d, online: action.quality !== 'offline', statusKnown: true, reportedId: action.sourceId, sourceKind: sensor.sourceKind, updatedAt: action.capturedAt } : d), sensors: { ...state.sensors, [action.key]: sensor }, reading, lastUpdatedAt: action.receivedAt ?? action.capturedAt, runtime: { ...state.runtime, lastValidDataAt: good ? action.capturedAt : state.runtime.lastValidDataAt } };
+      return recalculateControl(updated, action.receivedAt ?? action.capturedAt);
     }
+    case 'control-command-start':
+      return { ...state, controlRecords: [...state.controlRecords, action.record].slice(-500), actuators: { ...state.actuators, [action.record.device]: { ...state.actuators[action.record.device], commandId: action.record.id, executionStatus: 'sent' } } };
     case 'control-command-result': {
       const previous = state.actuators[action.key];
+      const now = action.now ?? state.lastUpdatedAt;
       const failed = ['failed', 'timed_out', 'rejected', 'cancelled'].includes(action.status);
-      const actuator = { ...previous, target: action.target, actual: action.actual === undefined ? previous.actual : action.actual, actualKnown: action.actual === undefined ? previous.actualKnown : true, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, ...(action.error ? { blockedReason: action.error } : {}) };
-      return { ...state, actuators: { ...state.actuators, [action.key]: actuator } };
+      const records = state.controlRecords.map(r => r.id === action.commandId ? { ...r, status: action.status, actual: action.actual, error: action.error } : r);
+      // Older replies stay in the audit history; they cannot overwrite a newer target.
+      if (action.commandId && (previous.commandId !== action.commandId || previous.target !== action.target)) return { ...state, controlRecords: records };
+      const actuator = { ...previous, actual: action.actual ?? previous.actual, actualKnown: action.actual === undefined ? previous.actualKnown : true, ...(action.actual === undefined ? {} : { actualUpdatedAt: now, feedbackLevel: 'gateway' as const }), target: action.target, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, blockedReason: action.error };
+      return reconcileEvidence({ ...state, controlRecords: records, actuators: { ...state.actuators, [action.key]: actuator } }, now);
+    }
+    case 'handle-alarm':
+      if (!action.note.trim()) return state;
+      return { ...state, alarms: state.alarms.map(a => a.id === action.id ? { ...a, handlingRecords: [...(a.handlingRecords ?? []), { at: action.now, note: action.note.trim().slice(0, 2000), completed: action.completed }].slice(-30) } : a) };
+    case 'review-ai':
+      return { ...state, aiReviews: [...state.aiReviews, action.review].slice(-100) };
+    case 'arm-control':
+      return { ...state, runtime: { ...state.runtime, controlArmed: action.armed && state.runtime.mode !== 'playback' && (state.runtime.mode === 'simulation' || state.runtime.externalInitialSyncStatus === 'ready' && state.runtime.dataChannelStatus === 'connected') } };
+    case 'expire-data': {
+      if (state.runtime.mode !== 'external') return state;
+      let changed = false;
+      const sensors = { ...state.sensors }; const reading = { ...state.reading };
+      for (const key of sensorKeys) {
+        const sensor = sensors[key];
+        if (sensor.quality === 'good' && Date.parse(action.now) - Date.parse(sensor.capturedAt ?? sensor.lastUpdatedAt) > action.staleAfterMs) {
+          sensors[key] = { ...sensor, quality: 'stale' }; reading[key] = null; changed = true;
+        }
+      }
+      const timedOut = state.controlRecords.filter(r => ['sent', 'acknowledged', 'pending'].includes(r.status) && Date.parse(action.now) - Date.parse(r.at) > runtimeConfig.requestTimeoutMs);
+      const actuators = { ...state.actuators };
+      for (const record of timedOut) if (actuators[record.device].commandId === record.id) {
+        actuators[record.device] = { ...actuators[record.device], executionStatus: 'timed_out', commandStatus: 'blocked', blockedReason: '未在等待时限内取得最终回执，实际动作需现场核实' };
+        changed = true;
+      }
+      const controlRecords = state.controlRecords.map(r => timedOut.includes(r) ? { ...r, status: 'timed_out' as const } : r);
+      const devices = state.devices.map(d => d.statusKnown && Date.parse(action.now) - Date.parse(d.updatedAt) > action.staleAfterMs ? { ...d, statusKnown: false } : d);
+      if (!changed && devices.every((d, i) => d === state.devices[i])) return state;
+      return recalculateControl({ ...state, sensors, reading, devices, actuators, controlRecords }, action.now);
     }
     case 'external-sync-status':
-      return { ...state, runtime: { ...state.runtime, externalInitialSyncStatus: action.status, controlArmed: action.status === 'ready', ...(action.now ? { lastHealthCheckAt: action.now } : {}) } };
+      return { ...state, runtime: { ...state.runtime, externalInitialSyncStatus: action.status, lastError: action.error, controlArmed: action.status === 'ready' ? state.runtime.controlArmed : false, ...(action.now ? { lastHealthCheckAt: action.now } : {}) } };
     case 'external-sync-actuators': {
-      const actuators = { ...state.actuators }; const devices = state.devices.map((device) => {
-        const snapshot = action.actuators.find((item) => item.key === device.actuatorKey);
+      const actuators = { ...state.actuators };
+      const devices = state.devices.map(device => {
+        const snapshot = action.actuators.find(item => item.key === device.actuatorKey);
         if (!snapshot || !device.actuatorKey) return device;
-        actuators[device.actuatorKey] = { ...actuators[device.actuatorKey], target: snapshot.target ?? actuators[device.actuatorKey].target, actual: snapshot.actual ?? actuators[device.actuatorKey].actual, actualKnown: snapshot.actual !== undefined, executionStatus: 'succeeded' };
-        return { ...device, online: snapshot.online, updatedAt: snapshot.updatedAt };
+        const previous = actuators[device.actuatorKey];
+        if (previous.actualUpdatedAt && Date.parse(snapshot.updatedAt) < Date.parse(previous.actualUpdatedAt)) return device;
+        actuators[device.actuatorKey] = { ...previous, target: state.runtime.externalInitialSyncStatus === 'syncing_actuators' ? snapshot.target ?? previous.target : previous.target, actual: snapshot.actual ?? previous.actual, actualKnown: snapshot.actual !== undefined || previous.actualKnown, ...(snapshot.actual === undefined ? {} : { actualUpdatedAt: snapshot.updatedAt }), feedbackLevel: snapshot.feedbackLevel ?? 'gateway', sourceKind: snapshot.sourceKind ?? 'unknown' };
+        return { ...device, online: snapshot.online, statusKnown: true, sourceKind: snapshot.sourceKind ?? 'unknown' as const, updatedAt: snapshot.updatedAt };
       });
-      return { ...state, devices, actuators };
+      return reconcileEvidence({ ...state, devices, actuators }, action.now);
     }
   }
 }

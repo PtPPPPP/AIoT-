@@ -1,145 +1,68 @@
-import { Cpu, Droplets, Fan, Lightbulb, ShieldAlert, SunMedium, Thermometer, Wind } from '../components/Icons';
+import { useState } from 'react';
 import { EnvironmentTrend, LightCo2Trend } from '../components/Charts';
 import { MetricCard } from '../components/MetricCard';
-import { Badge } from '../components/Status';
 import { PresentationConsole } from '../components/PresentationConsole';
 import { DemoGuide } from '../components/DemoGuide';
-import { ActuatorStates, PresentationState, Reading, SensorStates, SimulatorState } from '../types';
-import { deviceLabels, greenhousePolicy } from '../simulator/policy';
+import { ActuatorFeedback } from '../components/ActuatorFeedback';
+import { HistoryReview } from '../components/HistoryReview';
+import { RuntimeStatus } from '../components/RuntimeStatus';
+import { useGreenhouseSimulator } from '../hooks/useGreenhouseSimulator';
+import { PageKey } from '../types';
+import { deviceLabels, sensorLabels } from '../simulator/policy';
 import { formatReading, sensorRisk } from '../utils/greenhouse';
-import { edgeNodeTypeLabel } from '../config/edgeNodeConfig';
+import { alarmStatusLabels, conclusion, controlReason, deviceKeys, duration, nextCheck, originLabels, qualityLabels, sensorKeys } from '../utils/runtimeStatus';
 
-type DashboardProps = {
-  reading: Reading;
-  history: Reading[];
-  sensors: SensorStates;
-  actuators: ActuatorStates;
-  stats: {
-    unresolved: number;
-    irrigationCount: number;
-    waterSaving: number | null;
-    energySaving: number | null;
-    onlineRate: number;
-    explanation: string;
-  };
-  presentation: PresentationState;
-  onSelectPresentationScenario: (id: PresentationState['scenarioId']) => void;
-  onPausePresentation: () => void;
-  onResumePresentation: () => void;
-  onStepPresentation: () => void;
-  onResetPresentation: () => void;
-  onRegeneratePresentationSeed: () => void;
-  onCopyPresentationSeed: () => Promise<void>;
-  onExportSnapshot: () => void;
-  onImportSnapshot: (file: File) => Promise<void>;
-  onExportOperationLog: () => void;
-  onDebateReset: () => void;
-  isDebateResetting: boolean;
-  runtime: SimulatorState['runtime'];
-};
-
-export function Dashboard({
-  reading,
-  history,
-  sensors,
-  actuators,
-  stats,
-  presentation,
-  onSelectPresentationScenario,
-  onPausePresentation,
-  onResumePresentation,
-  onStepPresentation,
-  onResetPresentation,
-  onRegeneratePresentationSeed,
-  onCopyPresentationSeed,
-  onExportSnapshot,
-  onImportSnapshot,
-  onExportOperationLog,
-  onDebateReset,
-  isDebateResetting,
-  runtime,
-}: DashboardProps) {
-  return (
-    <div className="page-grid">
-      <section className="hero-panel">
-        <div>
-          <h2>温室 A 区实时运行</h2>
-          <p>{runtime.mode === 'simulation' ? '当前为前端演示模式：模拟传感器、可解释策略和设备执行闭环，未连接真实硬件。' : runtime.dataChannelStatus === 'unconfigured' ? '边缘网关未配置，未连接真实设备。' : `当前为 ${runtime.dataSourceLabel} 数据通道。`}</p>
-        </div>
-        <div className="closed-loop">
-          {['数据采集', '规则判断', '设备执行', '状态反馈'].map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-      </section>
-
-      <PresentationConsole
-        presentation={presentation}
-        onSelectScenario={onSelectPresentationScenario}
-        onPause={onPausePresentation}
-        onResume={onResumePresentation}
-        onStep={onStepPresentation}
-        onReset={onResetPresentation}
-        onRegenerateSeed={onRegeneratePresentationSeed}
-        onCopySeed={onCopyPresentationSeed}
-        onExportSnapshot={onExportSnapshot}
-        onImportSnapshot={onImportSnapshot}
-        onExportOperationLog={onExportOperationLog}
-        onDebateReset={onDebateReset}
-        isDebateResetting={isDebateResetting}
-        runtimeMode={runtime.mode}
-      />
+type DashboardProps = { model: ReturnType<typeof useGreenhouseSimulator>; onNavigate: (page: PageKey, focus?: string) => void };
+export function Dashboard({ model: m, onNavigate }: DashboardProps) {
+  const [view, setView] = useState<'run' | 'demo'>('run');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const state = conclusion(m);
+  const pending = m.alarms.filter(a => a.status !== 'resolved');
+  const units = { temperature: '°C', humidity: '%', light: 'lux', soilMoisture: '%', co2: 'ppm' };
+  return <div className="page-grid">
+    <section className="hero-panel">
+      <div><p>温室运行总览 · {m.runtime.mode === 'simulation' ? '仿真结论' : m.runtime.mode === 'playback' ? '回放结论' : '当前证据'}</p><h2>{state}</h2>
+        <p>{state === '数据不足' ? '部分采样或反馈不可用，先恢复可信数据再判断运行状况。' : state === '需要人工介入' ? '请检查下方异常与命令结果，现场核实后记录处理。' : state === '自动处理中' ? '关联设备有处置目标或运行反馈；异常仍需等待有效数据恢复。' : '当前有效采样与已知反馈中没有未恢复报警。'}</p>
+        <RuntimeStatus runtime={m.runtime} sensors={m.sensors} />
+      </div>
+      <div className="view-switch" aria-label="展示视图">
+        <button className={view === 'run' ? 'primary-button' : 'text-button'} onClick={() => setView('run')}>运行视图</button>
+        <button className={view === 'demo' ? 'primary-button' : 'text-button'} onClick={() => setView('demo')}>演示视图</button>
+        <small>仅改变展示，不改变通信和设备状态</small>
+      </div>
+    </section>
+    <section className="panel" aria-label="待处理异常">
+      <div className="section-title"><div><h2>待处理异常</h2><p>确认表示已知晓；人工处理记录与数据恢复分别追踪。</p></div><span>{pending.length} 项</span></div>
+      {!pending.length && <p>{state === '数据不足' ? '暂无已记录报警，当前数据不足以排除异常。' : '暂无未恢复报警。'}</p>}
+      <div className="task-grid">{pending.slice(0, 6).map(a => <article className="task-card" key={a.id}>
+        <strong>{a.title}</strong><span>{a.context?.location ?? '位置待核实'} · 已持续 {duration(a.firstTriggeredAt, m.observedAt)}</span>
+        <p>{a.description}</p><span>{alarmStatusLabels[a.status]}</span>
+        <p>当前处置目标：{a.context?.deviceKeys.length ? a.context.deviceKeys.map(k => deviceLabels[k] + '目标' + (m.actuators[k].target ? '开启' : '关闭')).join('；') : '没有关联自动动作证据'}</p>
+        <small>{nextCheck(a)}</small>
+        <button className="text-button" onClick={() => onNavigate('alerts', a.id)}>查看报警与处理</button>
+      </article>)}</div>
+      {pending.length > 6 && <button className="text-button" onClick={() => onNavigate('alerts')}>查看全部异常</button>}
+    </section>
+    <section className="panel" aria-label="关键设备">
+      <h2>关键设备与执行反馈</h2>
+      <div className="control-grid">{deviceKeys.map(k => <article className="control-card" key={k}>
+        <h3>{deviceLabels[k]}</h3><ActuatorFeedback state={m.actuators[k]} />
+        <details><summary>控制原因与有效阈值</summary><p>{controlReason(k, m.controlMode, m.reading, m.sensors)}</p></details>
+        <button className="text-button" onClick={() => onNavigate('control', k)}>查看设备与控制记录</button>
+      </article>)}</div>
+    </section>
+    {view === 'demo' && <details className="panel" open><summary>答辩场景控制台</summary>
+      <PresentationConsole presentation={m.presentation} onSelectScenario={m.selectPresentationScenario} onPause={m.pausePresentation} onResume={m.resumePresentation} onStep={m.stepPresentation} onReset={m.resetPresentationScenario} onRegenerateSeed={m.regeneratePresentationSeed} onCopySeed={m.copyPresentationSeed} onExportSnapshot={m.exportSnapshot} onImportSnapshot={m.importSnapshot} onExportOperationLog={m.exportOperationLog} onDebateReset={m.debateReset} isDebateResetting={m.isDebateResetting} runtimeMode={m.runtime.mode} />
       <DemoGuide />
-
-      <div className="metric-grid">
-        <MetricCard label="温度" value={formatReading(reading.temperature)} unit={reading.temperature === null ? '' : '°C'} hint={sensors.temperature.status === 'live' ? '风扇联动降温' : '传感器离线'} risk={sensorRisk('temperature', reading.temperature)} />
-        <MetricCard label="空气湿度" value={formatReading(reading.humidity)} unit={reading.humidity === null ? '' : '%'} hint={sensors.humidity.status === 'live' ? '保持棚内蒸腾平衡' : '传感器离线'} risk={sensorRisk('humidity', reading.humidity)} />
-        <MetricCard label="光照强度" value={formatReading(reading.light)} unit={reading.light === null ? '' : 'lux'} hint={sensors.light.status === 'live' ? '补光与遮阳联动' : '传感器离线'} risk={sensorRisk('light', reading.light)} />
-        <MetricCard label="土壤湿度" value={formatReading(reading.soilMoisture)} unit={reading.soilMoisture === null ? '' : '%'} hint={`低于 ${greenhousePolicy.irrigationStartThreshold}% 启动，高于 ${greenhousePolicy.irrigationStopThreshold}% 停止`} risk={sensorRisk('soilMoisture', reading.soilMoisture)} trend="down" />
-        <MetricCard label="CO₂浓度" value={formatReading(reading.co2)} unit={reading.co2 === null ? '' : 'ppm'} hint={sensors.co2.status === 'live' ? '通风策略输入' : '传感器离线'} risk={sensorRisk('co2', reading.co2)} />
-        <MetricCard label="策略估算节水率" value={stats.waterSaving === null ? '数据不足' : stats.waterSaving.toString()} unit={stats.waterSaving === null ? '' : '%'} hint={stats.explanation} />
-        <MetricCard label="演示节能率" value={stats.energySaving === null ? '数据不足' : stats.energySaving.toString()} unit={stats.energySaving === null ? '' : '%'} hint={stats.explanation} />
-        <MetricCard label="今日灌溉" value={stats.irrigationCount.toString()} unit="次" hint="由土壤湿度触发" />
-      </div>
-
-      <div className="dashboard-columns">
-        <EnvironmentTrend data={history} />
-        <section className="panel">
-          <div className="section-title">
-            <div>
-              <h2>执行设备状态</h2>
-              <p>自动控制策略正在根据实时数据调整设备</p>
-            </div>
-          </div>
-          <div className="device-state-grid">
-            {Object.entries(actuators).map(([key, state]) => (
-              <div className="device-state" key={key}>
-                <span className={`device-icon ${state.actual ? 'active' : ''} ${state.commandStatus === 'blocked' ? 'blocked' : ''}`}>
-                  {key === 'waterPump' && <Droplets size={24} />}
-                  {key === 'fan' && <Fan size={24} />}
-                  {key === 'growLight' && <Lightbulb size={24} />}
-                  {key === 'shade' && <SunMedium size={24} />}
-                </span>
-                <strong>{deviceLabels[key as keyof ActuatorStates]}</strong>
-                <span className="state-pair">目标：{state.target ? '开启' : '关闭'} · 实际：{state.actual ? '运行' : '停止'}</span>
-                <Badge tone={state.commandStatus === 'blocked' ? 'danger' : state.actual ? 'good' : 'muted'}>{state.commandStatus === 'blocked' ? '控制阻断' : state.actual ? '运行中' : '已关闭'}</Badge>
-                {state.blockedReason && <small className="blocked-reason">{state.blockedReason}</small>}
-              </div>
-            ))}
-          </div>
-          <div className="summary-strip">
-            <div><ShieldAlert size={18} />未解决报警 <strong>{stats.unresolved}</strong></div>
-            <div><Cpu size={18} />在线率 <strong>{stats.onlineRate}%</strong></div>
-            <div><Wind size={18} />数据来源 <strong>{runtime.dataSourceLabel}</strong></div>
-            <div><Cpu size={18} />边缘节点 <strong>{runtime.edgeNodeName}（{edgeNodeTypeLabel(runtime.edgeNodeType)}）</strong></div>
-            <div><ShieldAlert size={18} />网关状态 <strong>{runtime.mode === 'external' ? runtime.dataChannelStatus : '未连接真实网关'}</strong></div>
-            <div><Cpu size={18} />AI 来源 <strong>{runtime.aiSourceLabel}</strong></div>
-            <div><Thermometer size={18} />刷新时间 <strong>{reading.time}</strong></div>
-          </div>
-        </section>
-      </div>
-
-      <LightCo2Trend data={history} />
-    </div>
-  );
+    </details>}
+    <section className="panel"><h2>环境指标与统计口径</h2><div className="metric-grid">
+      {sensorKeys.map(k => <MetricCard key={k} label={sensorLabels[k]} risk={sensorRisk(k, m.sensors[k].quality === 'good' ? m.reading[k] : null)} value={formatReading(m.sensors[k].quality === 'good' ? m.reading[k] : null)} unit={m.reading[k] === null ? '' : units[k]} hint={originLabels[m.sensors[k].sourceKind ?? 'unknown'] + ' · ' + qualityLabels[m.sensors[k].quality]} />)}
+      <MetricCard label="今日记录的灌溉启动" value={m.runtime.mode === 'simulation' ? String(m.stats.irrigationCount) : '数据不足'} unit={m.runtime.mode === 'simulation' ? '次' : ''} hint="按本机本地日期统计已记录的停止→运行变化；不是用水量。外部反馈层级与连续性不足，暂不计量。" />
+      <MetricCard label="累计模拟灌溉时长" value={m.runtime.mode === 'simulation' ? m.efficiency.actualWaterSeconds.toFixed(1) : '数据不足'} unit={m.runtime.mode === 'simulation' ? '秒' : ''} hint="模拟周期累计，不是现场实测时长；实际用水量未知。" />
+      <MetricCard label="演示策略节水率" value={m.stats.waterSaving === null ? '数据不足' : String(m.stats.waterSaving)} unit={m.stats.waterSaving === null ? '' : '%'} hint={m.stats.explanation} />
+    </div><button className="text-button" onClick={() => onNavigate('environment')}>查看采集时间与最后有效值</button></section>
+    {!m.history.length ? <section className="panel"><p>尚无采样历史，未生成模拟数据填充图表。</p></section> : <><EnvironmentTrend data={m.history} /><LightCo2Trend data={m.history} /></>}
+    <section className="panel"><button className="text-button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)}>历史复盘与时间范围查询</button></section>
+    {historyOpen && <HistoryReview history={m.history} records={m.controlRecords} alarms={m.alarms} />}
+  </div>;
 }

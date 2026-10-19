@@ -1,6 +1,6 @@
 # 现有研华硬件与接入规划
 
-> 已持有 WISE-4012、ADAM-6050 和 EKI-2525，尚未完成实机接入。下文 I/O 为禁用的接线规划，量程为示例；网关 URL 为项目自定义协议，不是研华原生接口。
+> 清单记录已持有 WISE-4012、ADAM-6050 和 EKI-2525；本仓库没有足够证据确认现场实机接入程度。下文 I/O 为禁用的接线规划，量程为示例；网关 URL 为项目自定义协议，不是研华原生接口。
 
 ```text
 React 前端 -- HTTP / WebSocket --> 项目自定义边缘网关 -- REST / MQTT / Modbus TCP --> WISE-4012、ADAM-6050
@@ -63,7 +63,7 @@ React 前端 -- HTTP / WebSocket --> 项目自定义边缘网关 -- REST / MQTT 
 
 ## 网关协议
 
-网关 API：`GET /api/v1/health`、`GET /api/v1/sensors/latest`、`GET /api/v1/devices`、`GET /api/v1/actuators`、`POST /api/v1/control/commands`，并预留 `POST /api/v1/ai/infer`。这些 URL 是本项目自定义边缘网关接口，不是研华设备原生接口。所有 DTO 均含 `schemaVersion: 1`，外部 JSON 必须运行时校验。传感器包会携带来源、设备、通道、原始值、工程值、单位、采集/接收时间和质量；只有 `quality=good` 且 `valid=true` 可进入自动控制。
+网关 API：`GET /api/v1/health`、`GET /api/v1/sensors/latest`、`GET /api/v1/devices`、`GET /api/v1/actuators`、`POST /api/v1/control/commands`，并预留 `POST /api/v1/ai/infer`。这些 URL 是本项目自定义边缘网关接口，不是研华设备原生接口。所有 DTO 均含 `schemaVersion: 1`，外部 JSON 必须运行时校验。传感器包会携带来源、设备、通道、原始值、工程值、单位、采集/接收时间和质量；只有质量有效且来源声明为硬件的指标可进入外部自动控制，详见 [运行可信度与边缘协议](runtime-evidence.md)。
 
 WebSocket 信封类型预留：`sensor.packet`、`device.status`、`actuator.state`、`control.result`、`gateway.status`、`heartbeat`。HTTP 和 WebSocket 共用相同验证器。
 
@@ -82,3 +82,6 @@ WebSocket 信封类型预留：`sensor.packet`、`device.status`、`actuator.sta
 默认 `VITE_RUNTIME_MODE=simulation`，`external` 必须配置网关 URL；未配置时明确显示 `unconfigured`，不静默回退。`VITE_EDGE_NODE_TYPE` 只描述网关运行在哪类节点上，不能作为连接成功依据。离线构建始终为本地模拟，不会请求网关。
 
 真实接入前需提供：固件版本、实际 IP、WISE-4012 各通道类型、每个传感器量程与工程换算、ADAM-6050 DI/DO 接线和有效电平、继电器/接触器类型、反馈输入、遮阳限位及互锁、最终 REST/MQTT/Modbus 方案、网关部署系统，以及断网/断电安全状态。
+
+
+本轮运行边界、兼容 DTO 扩展及未生效保护设计，以 [运行可信度与边缘协议](runtime-evidence.md) 为准。现场结果与软件 mock 验证分别记录。

@@ -14,7 +14,7 @@ export function EnvironmentTrend({ data }: { data: Reading[] }) {
   return (
     <ChartPanel
       title="实时环境趋势"
-      description="模拟传感器每 2.6 秒生成一次单帧快照"
+      description="仅显示已记录采样；仿真视图含演示历史，外部接入不补造历史。各指标按自身范围缩放。"
       data={data}
       series={[
         { key: 'temperature', label: '温度 °C', color: '#0ea5e9' },
@@ -77,7 +77,7 @@ function toSegments(data: Reading[], key: SensorKey) {
   data.forEach((item, index) => {
     const value = item[key];
     if (value === null) {
-      if (current.length > 1) segments.push(current.join(' '));
+      if (current.length > 0) segments.push(current.length === 1 ? current[0] + ' ' + current[0] : current.join(' '));
       current = [];
       return;
     }
@@ -85,6 +85,6 @@ function toSegments(data: Reading[], key: SensorKey) {
     const y = height - padding - ((value - min) / range) * (height - padding * 2);
     current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
   });
-  if (current.length > 1) segments.push(current.join(' '));
+  if (current.length > 0) segments.push(current.length === 1 ? current[0] + ' ' + current[0] : current.join(' '));
   return segments;
 }

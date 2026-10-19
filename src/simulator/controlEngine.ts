@@ -84,17 +84,19 @@ export function planActuatorTargets(
   automatic: ControlDecision,
   manualTargets: DeviceTargets,
   previous: ActuatorStates,
+  preserveFailures = false,
 ): ActuatorStates {
   const next = { ...previous };
   for (const key of Object.keys(previous) as DeviceStateKey[]) {
     const target = mode === 'auto' ? automatic.targets[key] : manualTargets[key];
     const sensorBlock = mode === 'auto' ? automatic.blockedReasons[key] : undefined;
+    const failed = preserveFailures && previous[key].target === target && ['failed', 'timed_out', 'rejected'].includes(previous[key].executionStatus);
     next[key] = {
       ...previous[key],
       target: sensorBlock ? previous[key].target : target,
-      commandStatus: sensorBlock ? 'blocked' : previous[key].target === target && previous[key].commandStatus !== 'blocked' ? previous[key].commandStatus : 'applied',
-      executionStatus: sensorBlock ? 'cancelled' : previous[key].target === target && previous[key].commandStatus !== 'blocked' ? previous[key].executionStatus : 'pending',
-      ...(sensorBlock ? { blockedReason: sensorBlock } : {}),
+      commandStatus: sensorBlock || failed ? 'blocked' : 'applied',
+      executionStatus: failed ? previous[key].executionStatus : sensorBlock ? 'cancelled' : previous[key].target === target && previous[key].commandStatus !== 'blocked' ? previous[key].executionStatus : 'pending',
+      blockedReason: failed ? previous[key].blockedReason : sensorBlock,
     };
   }
 

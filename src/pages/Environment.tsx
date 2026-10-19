@@ -1,7 +1,9 @@
+import { RuntimeStatus } from '../components/RuntimeStatus';
+import { originLabels } from '../utils/runtimeStatus';
 import { MetricCard } from '../components/MetricCard';
 import { Badge } from '../components/Status';
 import { greenhousePolicy } from '../simulator/policy';
-import { Reading, SensorKey, SensorStates } from '../types';
+import { Reading, SensorKey, SensorStates, SimulatorState } from '../types';
 import { formatReading, formatTimestamp, sensorRisk } from '../utils/greenhouse';
 
 const rows: Array<{ key: SensorKey; label: string; unit: string; normal: string }> = [
@@ -12,9 +14,10 @@ const rows: Array<{ key: SensorKey; label: string; unit: string; normal: string 
   { key: 'co2', label: 'CO₂浓度', unit: 'ppm', normal: `430-${greenhousePolicy.fanStartCo2} ppm` },
 ];
 
-export function Environment({ reading, sensors }: { reading: Reading; sensors: SensorStates }) {
+export function Environment({ reading, sensors, runtime }: { reading: Reading; sensors: SensorStates; runtime: SimulatorState['runtime'] }) {
   return (
     <div className="page-grid">
+      <RuntimeStatus runtime={runtime} sensors={sensors} />
       <div className="metric-grid compact">
         {rows.map((row) => {
           const value = reading[row.key];
@@ -25,7 +28,7 @@ export function Environment({ reading, sensors }: { reading: Reading; sensors: S
               label={row.label}
               value={formatReading(value)}
               unit={value === null ? '' : row.unit}
-              hint={sensor.quality === 'good' ? `正常/策略范围 ${row.normal}` : `${qualityLabel(sensor.quality)}，最后更新 ${formatTimestamp(sensor.lastUpdatedAt)}`}
+              hint={originLabels[sensor.sourceKind ?? 'unknown'] + ' · ' + (sensor.quality === 'good' ? `正常/策略范围 ${row.normal}` : `${qualityLabel(sensor.quality)}，最后更新 ${formatTimestamp(sensor.lastUpdatedAt)}`)}
               risk={sensorRisk(row.key, value)}
             />
           );
@@ -35,7 +38,7 @@ export function Environment({ reading, sensors }: { reading: Reading; sensors: S
       <section className="panel">
         <div className="section-title">
           <div>
-            <h2>多传感器模拟数据</h2>
+            <h2>环境采样与可信度</h2>
             <p>离线传感器会中断数据流，页面保留最后有效值和更新时间，不再冒充实时数据。</p>
           </div>
           <Badge tone="blue">最后快照 {reading.time}</Badge>
@@ -50,7 +53,7 @@ export function Environment({ reading, sensors }: { reading: Reading; sensors: S
             const risk = sensorRisk(row.key, value);
             return (
               <div className={`table-row ${risk !== '正常' ? 'row-alert' : ''}`} key={row.key}>
-                <span data-label="传感器">{sensor.sourceId}</span>
+                <span data-label="传感器"><span>{originLabels[sensor.sourceKind ?? 'unknown']}</span><details><summary>采样详情</summary><p>来源标识：{sensor.sourceId} · {sensor.source ?? (runtime.mode === 'simulation' ? '本地模拟器' : '未知')}</p><p>采集：{sensor.capturedAt ? formatTimestamp(sensor.capturedAt) : '尚无采样'}</p><p>接收：{sensor.receivedAt ? formatTimestamp(sensor.receivedAt) : '未知'}</p><p>最后有效：{sensor.lastUpdatedAt ? formatTimestamp(sensor.lastUpdatedAt) : '无'}；{sensor.lastUpdatedAt ? sensor.lastValue : '无有效值'}</p></details></span>
                 <span data-label="指标">{row.label}</span>
                 <strong data-label="当前值">{value === null ? '不可用' : `${value.toLocaleString()} ${row.unit}`}</strong>
                 <span data-label="范围">{row.normal}</span>

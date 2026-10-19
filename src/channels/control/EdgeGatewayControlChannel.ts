@@ -8,7 +8,7 @@ export class EdgeGatewayControlChannel implements DeviceControlChannel {
   private status: ChannelStatus = 'unconfigured';
   private readonly results = new Map<string, Promise<ControlResult>>();
   private statusListeners = new Set<(status: ChannelStatus) => void>();
-  constructor(private readonly config: RuntimeConfig, private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly config: RuntimeConfig, private readonly fetcher: typeof fetch = (...args) => globalThis.fetch(...args)) {}
   getStatus() { return this.status; }
   async connect() { this.setStatus(this.config.edgeApiBaseUrl ? 'connecting' : 'unconfigured'); }
   async disconnect() { this.setStatus('disconnected'); }
@@ -25,9 +25,9 @@ export class EdgeGatewayControlChannel implements DeviceControlChannel {
     try {
       this.setStatus('connecting');
       const response = await this.fetcher(`${this.config.edgeApiBaseUrl}/api/v1/control/commands`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request), signal: controller.signal });
-      if (!response.ok) return { command, status: 'failed', error: `网关返回 HTTP ${response.status}` };
+      if (!response.ok) { this.setStatus('failed'); return { command, status: 'failed', error: `网关返回 HTTP ${response.status}` }; }
       const parsed = parseGatewayControlResponse(await response.json());
-      if (!parsed || parsed.commandId !== command.id || parsed.idempotencyKey !== command.idempotencyKey) return { command, status: 'failed', error: '网关控制响应格式无效' };
+      if (!parsed || parsed.commandId !== command.id || parsed.idempotencyKey !== command.idempotencyKey || parsed.target !== command.target) { this.setStatus('failed'); return { command, status: 'failed', error: '网关控制响应格式或命令目标无效' }; }
       this.setStatus('connected'); return { command, status: parsed.status, actual: parsed.actual, error: parsed.error };
     } catch { this.setStatus('failed'); return { command, status: controller.signal.aborted ? 'timed_out' : 'failed', error: controller.signal.aborted ? '控制命令超时' : '边缘网关请求失败' }; }
     finally { clearTimeout(timeout); }
