@@ -1,0 +1,16 @@
+{
+  "data_dir": "var/edge-data",
+  "port": 8090,
+  "collector_mode": "disabled",
+  "gateway_base_url": null,
+  "control_events_path": null,
+  "poll_seconds": 5,
+  "request_timeout_seconds": 3,
+  "stale_after_seconds": 30,
+  "max_gap_seconds": 120,
+  "retention_days": 90,
+  "timezone": "Asia/Shanghai",
+  "sensor_zones": {},
+  "device_zones": {},
+  "allowed_origins": ["http://127.0.0.1:5173", "http://localhost:5173"]
+}

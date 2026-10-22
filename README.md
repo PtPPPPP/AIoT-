@@ -1,8 +1,8 @@
 # AIoT 智慧温室种植系统
 
-React 18 + TypeScript + Vite 温室管理前端，包含仿真、外部网关接入与回放运行类型。本轮围绕“哪里异常、系统做了什么、执行是否成功、下一步做什么”改进运行总览与处理流程。
+React 18 + TypeScript + Vite 温室管理系统，包含仿真、外部网关接入与回放运行类型。现已增加 Python 标准库 + SQLite 独立数据服务，支持持续采集、环境日报、灌溉事件复盘与人工核查；已有监测、控制、报警和答辩能力保留。
 
-## 当前接入结论（2026-10-19 仓库审查）
+## 当前接入结论（2026-10-22 仓库审查）
 
 不能由旧文档推断现场没有接硬件，也不能由 external 配置推断硬件已经在线。本仓库可确认的证据如下；现场可能存在独立服务，其部署与接线结果需另行核对。
 
@@ -10,13 +10,35 @@ React 18 + TypeScript + Vite 温室管理前端，包含仿真、外部网关接
 |---|---|---|---|---|
 | 传感器数据 | 本地模拟器、自定义网关 DTO | 已有 HTTP GET 客户端和严格校验；未发现设备原生 REST/MQTT/Modbus 适配服务 | 仅隔离 mock 验证；无现场通信结论 | 未验证 |
 | 控制 | 模拟执行回执、命令协议 | 已有 HTTP POST 网关客户端、初始同步和后续 GET 执行器轮询 | 仅 mock 网关；不调用现场控制接口 | 未验证；输出通道回读也不能等同物理动作 |
-| 边缘服务 | health、sensors、actuators、commands 协议 | 本仓库未发现网关服务源码／启动配置 | 未访问现场服务 | 未验证 |
-| 存储 | 分运行模式 localStorage、有界历史与 CSV／JSON 导出 | 未发现后端数据库或历史查询客户端 | 本机持久化与恢复测试 | 不适用 |
+| 边缘服务 | 原控制网关协议保留 | 新增独立只读数据服务；不替代现场控制网关 | SQLite、线程采集与本机 HTTP/浏览器隔离验证；未访问现场服务 | 未验证 |
+| 存储与分析 | 浏览器缓存、SQLite 分区及历史查询 | 新增去重原始采样、事件、版本化上下文、日报与灌溉效果分析 | 确定性样例、备份恢复及浏览器验证 | 现场连续数据与实际效果未验证 |
 | AI | 离线演示适配器 | 已有自定义网关推理客户端和响应校验；没有模型服务源码 | 模拟与客户端 mock 测试，真实模型未验证 | 不适用，AI 不下发控制命令 |
 | 回放 | 运行类型预留，控制禁用 | 尚无时间序列回放引擎 | 空数据状态／隔离行为测试 | 不适用 |
 | 安全保护 | 界面及协议设计 | 未发现服务端租约、最大连续运行、到期恢复实现 | 未验证 | 未验证 |
 
-当前目录为 Git 仓库，开始修改时工作树干净。仅发现 .env.example，示例模式是 simulation，没有有效现场运行配置。设备持有清单与禁用 I/O 映射示例不是通信证据。未改动阈值、寄存器、I/O 分配或联锁。
+当前目录为 Git 仓库，本轮开始时工作树干净。现场运行配置未提供；新增数据服务示例默认禁用采集。设备持有清单与禁用 I/O 映射示例不是通信证据。未改动阈值、寄存器、I/O 分配或联锁，也未覆盖不可访问的现场独立服务。
+
+## 数据应用升级：快速运行
+
+需要 Python 3.11+，无需 pip 安装第三方包。详细模型、计算口径、手算样例、接口、迁移及备份恢复见 [数据应用说明](docs/data-application.md)。
+
+```powershell
+# 持续模拟采集及明确标注的软件测试样例，使用独立 simulation 分区
+python -m edge_data --config edge_data/demo.config.json --load-test-fixture
+```
+
+另一个终端：
+
+```powershell
+$env:VITE_DATA_SERVICE_URL='http://127.0.0.1:8090'
+node node_modules/vite/bin/vite.js --host 127.0.0.1
+```
+
+进入“数据分析”，选择 `software-test-zone`，查看 2026-10-20 08:00～08:10（Asia/Shanghai）的可核对样例；`simulation-zone` 是不依赖浏览器的持续模拟采集。两者都不是真实农艺证据。
+
+不需要模拟时使用 `python -m edge_data --config edge-data.config.example.json`，默认无采集源，不生成数据。接入现场前核对配置与只读接口，不能把示例地址当作可用服务。
+
+日报按真实时间间隔积分，区分有效、超限、目标未知与缺失。目标、作物和阶段未配置时只展示描述统计。灌溉区分请求、网关状态、输出回读、物理反馈与停止反馈；观察期未结束或证据不足时不会标为效果已证实。人工浇水、维护、校准等可关联复盘。
 
 ## 运行流程
 
@@ -36,8 +58,8 @@ React 18 + TypeScript + Vite 温室管理前端，包含仿真、外部网关接
 - 今日灌溉统计按浏览器本地日期计算已记录的仿真停止→运行次数；跨日归零口径，不再显示累计次数为今日次数。
 - 仿真运行时长是模拟周期累计；外部模式因反馈连续性和层级不足，启动计量／运行时长显示数据不足。没有流量计与电表，不提供实测用水量、实测节水率或节能率。
 - 估算节水是模拟基线对比，并明确标为演示。外部模式不使用该指标。
-- 环境采样最多保留 500 条，控制记录 500 条，报警 40 条，人工备注每报警 30 条，AI 复核 100 条。复盘支持本地日期范围和关联设备筛选，显示匹配记录的前 100 条。
-- 存储在当前浏览器、当前运行模式。清理浏览器会丢失，没有服务端审计、多人同步或长期历史保证；外部模式不会生成历史数据填充图表。
+- 既有浏览器缓存仍保留环境 500 条、控制 500 条、报警 40 条、人工备注每报警 30 条及 AI 复核 100 条，不当作完整历史。清理浏览器会丢失这些缓存。
+- 新增独立数据服务按来源隔离 SQLite 文件，默认保留 90 天，前端通过历史查询接口访问，缺失时段不填造。没有多人同步或高可用保证；备份与恢复使用 SQLite 在线备份及新的恢复目录。
 - 仿真可以保留示例历史并明确来源；导入快照只允许 simulation，不导入外部运行配置。旧 v2 仿真保存兼容，没有逐日启动记录时不从累计数反推。
 
 ## AI 使用边界
@@ -46,7 +68,7 @@ simulation 使用人工选择的演示结果，不是模型判断。external 只
 
 ## 运行与检查
 
-需要 Node.js 20.19+ 或 22.12+，保持现有 React/TypeScript 架构，无新增依赖。
+需要 Node.js 20.19+ 或 22.12+；独立数据服务需要 Python 3.11+。保持现有 React/TypeScript 架构，无新增第三方依赖。
 
 ```bash
 npm install
@@ -54,6 +76,7 @@ npm run dev
 npm run typecheck
 npm run lint
 npm run test:run
+npm run test:data
 npm run build
 npm run build:offline
 npm run test:e2e
@@ -73,7 +96,7 @@ node scripts/inline-offline.mjs
 node node_modules/@playwright/test/cli.js test
 ```
 
-浏览器测试配置显式隔离：5173 为 simulation，5174 为 external + mock-gateway.invalid，测试拦截全部 API 请求；不复用已有服务器。离线测试使用仿真单文件包。没有匹配的 Playwright Chromium 时，可指定已安装的 Edge（PowerShell）：
+浏览器测试配置显式隔离：5173 为 simulation，5174 为 external + mock-gateway.invalid；新增 5175 分析前端与 8091 临时软件样例服务。外部控制请求全部由 mock 拦截，分析项目禁止访问网关；不复用已有服务器。离线测试使用仿真单文件包。没有匹配的 Playwright Chromium 时，可指定已安装的 Edge（PowerShell）：
 
 ```powershell
 $env:PLAYWRIGHT_BROWSER_CHANNEL='msedge'
@@ -88,10 +111,21 @@ node node_modules/@playwright/test/cli.js test
 - src/hooks/useGreenhouseSimulator.ts：通道生命周期、会话授权和本机存储。
 - src/pages/：运行总览、环境、控制、AI、报警、设备及项目介绍。
 - src/components/HistoryReview.tsx：时间范围复盘。
+- edge_data/：独立采集、SQLite、日报、灌溉重建、HTTP API、迁移与测试。
+- src/analysis/、src/pages/DataAnalysis.tsx：类型校验的历史客户端、统计、图表与人工核查。
 - src/config/hardwareConfig.ts 与 integrations/advantech/：持有清单及禁用接线示例。
 - docs/advantech-integration.md、docs/edge-compute-deployment.md：接线与部署规划；规划内容不能当作已部署事实。
 
-## 本轮实际验证
+## 2026-10-22 数据应用升级验证记录
+
+- Python 标准库数据服务：30 项隔离测试通过，覆盖去重、乱序、来源分区、历史配置、不规则积分、跨日、灌溉证据、中断重启与备份恢复。
+- TypeScript 两套配置检查、ESLint 零警告通过；Vitest 27 个文件、102 项测试通过。
+- Playwright 14 项通过，覆盖既有仿真/外部 mock/离线流程及新增日报、灌溉详情、人工备注、种植上下文；已检查桌面与 390px 移动端截图。
+- 标准构建与单文件离线构建通过；故意带入 external、网关和数据服务地址构建离线包，浏览器验证无 API 请求。
+- 确定性样例的 600 秒窗口：有效 360 秒、覆盖率 60%、加权湿度 38.1666667%、测试目标内 150 秒、超限 210 秒。样例仅用于核对软件，不是农艺标准。
+- 没有访问现场服务、操作真实设备、修改现场控制参数或部署生产环境。现场通信和真实灌溉效果仍未验证。
+
+## 2026-10-19 既有功能验证记录
 
 - TypeScript 严格类型检查、ESLint 零警告通过。
 - Vitest：24 个测试文件、95 项测试通过。

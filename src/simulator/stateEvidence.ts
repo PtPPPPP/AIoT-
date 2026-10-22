@@ -23,7 +23,7 @@ export function recordSimulationTransition(before: SimulatorState, after: Simula
   const records = deviceKeys.filter(k => before.actuators[k].actual !== after.actuators[k].actual || before.actuators[k].target !== after.actuators[k].target || before.actuators[k].executionStatus !== after.actuators[k].executionStatus).map(key => ({
     id: `simulation:${key}:${now}`, at: now, device: key, target: after.actuators[key].target, actual: after.actuators[key].actual,
     status: after.actuators[key].executionStatus, reason: controlReason(key, after.controlMode, after.reading, after.sensors),
-    error: after.actuators[key].blockedReason,
+    error: after.actuators[key].blockedReason, source: after.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, sourceKind: 'simulation' as const, feedbackLevel: 'simulation' as const, completedAt: now,
   }));
   const started = !before.actuators.waterPump.actual && after.actuators.waterPump.actual;
   return { ...after, controlRecords: [...(before.controlRecords ?? []), ...records].slice(-500),

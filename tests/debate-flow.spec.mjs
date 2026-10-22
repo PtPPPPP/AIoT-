@@ -5,7 +5,7 @@ test('答辩主链路、故障链路和七页导航没有页面错误', async ({
   const gatewayRequests = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('request', (request) => {
-    if (request.url().includes('/api/v1/')) gatewayRequests.push(request.url());
+    if (request.url().includes('/api/')) gatewayRequests.push(request.url());
   });
   await page.goto(baseURL.endsWith('/') ? `${baseURL}index.html` : baseURL);
   await expect(page.getByText('运行模式：答辩仿真').first()).toBeVisible();

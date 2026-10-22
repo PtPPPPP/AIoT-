@@ -1,9 +1,11 @@
 import { RuntimeMode } from '../types';
 import { createEdgeNodeConfig, EdgeNodeEnv } from './edgeNodeConfig';
+import { createDataServiceUrl } from './dataServiceConfig';
 
 export type RuntimeConfig = {
   mode: RuntimeMode;
   edgeApiBaseUrl?: string;
+  dataServiceUrl?: string;
   edgeWsUrl?: string;
   dataTransport: 'http-polling' | 'websocket';
   pollIntervalMs: number;
@@ -11,7 +13,7 @@ export type RuntimeConfig = {
   staleAfterMs: number;
   warnings: string[];
 };
-type RuntimeEnv = EdgeNodeEnv & { VITE_RUNTIME_MODE?: string; VITE_EDGE_WS_URL?: string; VITE_EDGE_DATA_TRANSPORT?: string; VITE_EDGE_POLL_INTERVAL_MS?: string; VITE_EDGE_REQUEST_TIMEOUT_MS?: string; VITE_EDGE_STALE_AFTER_MS?: string };
+type RuntimeEnv = EdgeNodeEnv & { VITE_DATA_SERVICE_URL?: string; VITE_RUNTIME_MODE?: string; VITE_EDGE_WS_URL?: string; VITE_EDGE_DATA_TRANSPORT?: string; VITE_EDGE_POLL_INTERVAL_MS?: string; VITE_EDGE_REQUEST_TIMEOUT_MS?: string; VITE_EDGE_STALE_AFTER_MS?: string };
 
 const defaults = { pollIntervalMs: 1_000, requestTimeoutMs: 3_000, staleAfterMs: 5_000 };
 const modes: RuntimeMode[] = ['simulation', 'external', 'playback'];
@@ -41,6 +43,7 @@ export function createRuntimeConfig(env: RuntimeEnv = import.meta.env): RuntimeC
   return {
     mode,
     edgeApiBaseUrl: edgeNode.gatewayBaseUrl,
+    dataServiceUrl: createDataServiceUrl(env.VITE_DATA_SERVICE_URL),
     edgeWsUrl: readUrl(env.VITE_EDGE_WS_URL, 'VITE_EDGE_WS_URL', warnings),
     dataTransport,
     pollIntervalMs: readNumber(env.VITE_EDGE_POLL_INTERVAL_MS, defaults.pollIntervalMs, 'VITE_EDGE_POLL_INTERVAL_MS', warnings),
@@ -51,4 +54,4 @@ export function createRuntimeConfig(env: RuntimeEnv = import.meta.env): RuntimeC
 }
 
 export const runtimeConfig = createRuntimeConfig();
-export function isExternalConfigured(config: RuntimeConfig) { return Boolean(config.edgeApiBaseUrl); }
+export function isExternalConfigured(config: RuntimeConfig) { return Boolean(config.edgeApiBaseUrl || config.dataServiceUrl); }

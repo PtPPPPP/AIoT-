@@ -1,4 +1,5 @@
 interface ImportMetaEnv {
+  readonly VITE_DATA_SERVICE_URL?: string;
   readonly VITE_RUNTIME_MODE?: string;
   readonly VITE_EDGE_NODE_TYPE?: string;
   readonly VITE_EDGE_NODE_NAME?: string;

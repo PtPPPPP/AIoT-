@@ -2,9 +2,11 @@ import { lazy, Suspense, useState } from 'react';
 import { Layout } from './components/Layout';
 import { useGreenhouseSimulator } from './hooks/useGreenhouseSimulator';
 import { DeviceStateKey, PageKey } from './types';
+import { useDataAudit } from './hooks/useDataAudit';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
 const Environment = lazy(() => import('./pages/Environment').then((module) => ({ default: module.Environment })));
+const DataAnalysis = lazy(() => import('./pages/DataAnalysis').then((module) => ({ default: module.DataAnalysis })));
 const Control = lazy(() => import('./pages/Control').then((module) => ({ default: module.Control })));
 const AiRecognition = lazy(() => import('./pages/AiRecognition').then((module) => ({ default: module.AiRecognition })));
 const Alerts = lazy(() => import('./pages/Alerts').then((module) => ({ default: module.Alerts })));
@@ -16,6 +18,7 @@ function App() {
   const [focus, setFocus] = useState<string | undefined>();
   const navigate = (next: PageKey, id?: string) => { setFocus(id); setPage(next); };
   const simulator = useGreenhouseSimulator();
+  const auditError = useDataAudit(simulator);
 
   return (
     <Layout
@@ -24,13 +27,14 @@ function App() {
       unresolvedCount={simulator.stats.unresolved}
       runtime={simulator.runtime}
       sensors={simulator.sensors}
-      persistenceError={simulator.persistenceError}
+      persistenceError={simulator.persistenceError ?? auditError}
       actionMessage={simulator.actionMessage}
       onReset={simulator.resetDemoData}
     >
       <Suspense fallback={<div className="panel loading-panel">页面正在加载…</div>}>
         {page === 'dashboard' && <Dashboard model={simulator} onNavigate={navigate} />}
         {page === 'environment' && <Environment reading={simulator.reading} sensors={simulator.sensors} runtime={simulator.runtime} />}
+        {page === 'analysis' && <DataAnalysis mode={simulator.runtime.mode} />}
         {page === 'control' && (
           <Control
             devices={simulator.devices}

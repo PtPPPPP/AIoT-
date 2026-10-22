@@ -1,0 +1,8 @@
+{
+  "data_dir": "var/edge-data-demo",
+  "port": 8090,
+  "collector_mode": "simulation",
+  "poll_seconds": 5,
+  "retention_days": 90,
+  "timezone": "Asia/Shanghai"
+}

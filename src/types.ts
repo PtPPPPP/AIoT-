@@ -3,6 +3,7 @@ import type { AiInferenceProvider, EdgeNodeType } from './config/edgeNodeConfig'
 export type PageKey =
   | 'dashboard'
   | 'environment'
+  | 'analysis'
   | 'control'
   | 'ai'
   | 'alerts'
@@ -112,6 +113,11 @@ export type ControlRecord = {
   reason: string;
   actual?: boolean;
   error?: string;
+  completedAt?: string;
+  source?: 'auto-policy' | 'manual' | 'simulation';
+  sourceKind?: DataOrigin;
+  feedbackLevel?: 'physical' | 'output' | 'gateway' | 'simulation';
+  strategyVersion?: string;
 };
 export type AiReview = { at: string; fingerprint: string; mode: RecognitionResult['mode']; label: string; decision: 'confirmed' | 'corrected' | 'recheck'; note: string };
 

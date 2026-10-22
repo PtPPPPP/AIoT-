@@ -12,9 +12,12 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest",
     "test:run": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm run test:run && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run test:run && npm run test:data && npm run build",
     "prepare:release": "npm run build:offline && node scripts/prepare-release.mjs",
-    "test:e2e": "npm run build:offline && playwright test"
+    "test:e2e": "npm run build:offline && playwright test",
+    "data:start": "python -m edge_data --config edge-data.config.example.json",
+    "data:demo": "python -m edge_data --config edge_data/demo.config.json --load-test-fixture",
+    "test:data": "python -m unittest discover -s edge_data/tests -v"
   },
   "dependencies": {
     "react": "18.3.1",

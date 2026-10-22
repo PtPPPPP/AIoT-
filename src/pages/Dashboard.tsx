@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnalysisSummary } from '../components/AnalysisSummary';
 import { EnvironmentTrend, LightCo2Trend } from '../components/Charts';
 import { MetricCard } from '../components/MetricCard';
 import { PresentationConsole } from '../components/PresentationConsole';
@@ -55,6 +56,7 @@ export function Dashboard({ model: m, onNavigate }: DashboardProps) {
       <PresentationConsole presentation={m.presentation} onSelectScenario={m.selectPresentationScenario} onPause={m.pausePresentation} onResume={m.resumePresentation} onStep={m.stepPresentation} onReset={m.resetPresentationScenario} onRegenerateSeed={m.regeneratePresentationSeed} onCopySeed={m.copyPresentationSeed} onExportSnapshot={m.exportSnapshot} onImportSnapshot={m.importSnapshot} onExportOperationLog={m.exportOperationLog} onDebateReset={m.debateReset} isDebateResetting={m.isDebateResetting} runtimeMode={m.runtime.mode} />
       <DemoGuide />
     </details>}
+    <AnalysisSummary mode={m.runtime.mode} onOpen={() => onNavigate('analysis')} />
     <section className="panel"><h2>环境指标与统计口径</h2><div className="metric-grid">
       {sensorKeys.map(k => <MetricCard key={k} label={sensorLabels[k]} risk={sensorRisk(k, m.sensors[k].quality === 'good' ? m.reading[k] : null)} value={formatReading(m.sensors[k].quality === 'good' ? m.reading[k] : null)} unit={m.reading[k] === null ? '' : units[k]} hint={originLabels[m.sensors[k].sourceKind ?? 'unknown'] + ' · ' + qualityLabels[m.sensors[k].quality]} />)}
       <MetricCard label="今日记录的灌溉启动" value={m.runtime.mode === 'simulation' ? String(m.stats.irrigationCount) : '数据不足'} unit={m.runtime.mode === 'simulation' ? '次' : ''} hint="按本机本地日期统计已记录的停止→运行变化；不是用水量。外部反馈层级与连续性不足，暂不计量。" />

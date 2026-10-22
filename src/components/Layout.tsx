@@ -16,6 +16,7 @@ import { SensorStates, SimulatorState, PageKey } from '../types';
 const navItems: Array<{ key: PageKey; label: string; icon: React.ComponentType<{ size?: number }> }> = [
   { key: 'dashboard', label: '数据总览', icon: Gauge },
   { key: 'environment', label: '环境监测', icon: Activity },
+  { key: 'analysis', label: '数据分析', icon: Gauge },
   { key: 'control', label: '智能控制', icon: SlidersHorizontal },
   { key: 'ai', label: 'AI识别', icon: Bot },
   { key: 'alerts', label: '报警中心', icon: AlertTriangle },

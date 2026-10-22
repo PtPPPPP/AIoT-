@@ -1199,3 +1199,28 @@ textarea { display: block; width: 100%; min-height: 90px; border: 1px solid #cbd
   .hero-panel h2 { font-size: 24px; }
   .page-grid { gap: 14px; }
 }
+
+/* Data service reports and evidence review */
+.analysis-filters, .analysis-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px; align-items: end; }
+.analysis-page label { color: #3d5559; font-size: 13px; display: block; }
+.analysis-page input:not([type="checkbox"]), .analysis-page select { display: block; width: 100%; min-height: 38px; padding: 8px; border: 1px solid #b9ced1; border-radius: 6px; font: inherit; }
+.analysis-page input[type="checkbox"] { width: auto; margin-right: 6px; }
+.analysis-form { margin-top: 20px; width: 100%; }
+.analysis-form-grid { width: 100%; }
+.range-inputs { display: flex; gap: 8px; }
+.range-inputs input { min-width: 0; }
+.analysis-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.analysis-stat { border: 1px solid #dbe7e8; background: #f9fcfc; border-radius: 10px; padding: 18px; min-width: 0; overflow-wrap: anywhere; }
+.analysis-stat h3 { margin-top: 0; }
+.analysis-stat p { line-height: 1.8; font-size: 13px; }
+.analysis-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 380px; overflow: auto; background: #edf5f5; border-radius: 8px; padding: 12px; font-size: 12px; }
+.time-chart p, .time-chart small { color: #60767b; font-size: 12px; }
+.time-chart h3 { margin-top: 0; }
+.time-chart svg [role="button"] { cursor: pointer; }
+.time-chart svg [role="button"]:focus { outline: 2px solid #c65d13; }
+.analysis-page .notice { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .analysis-stat { padding: 14px; }
+  .analysis-filters, .analysis-form-grid, .analysis-stat-grid { grid-template-columns: 1fr; }
+  .time-chart { padding: 14px; }
+}

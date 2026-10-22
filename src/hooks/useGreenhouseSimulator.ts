@@ -80,7 +80,7 @@ export function useGreenhouseSimulator() {
           const snapshots = await runtime.dataChannel.synchronizeInitialState(); if (cancelled) return;
           dispatch({ type: 'external-sync-status', status: 'syncing_actuators' });
           dispatch({ type: 'external-sync-actuators', actuators: snapshots.map((item) => ({ ...item, key: item.logicalDevice })), now: new Date().toISOString() });
-          runtime.controlChannel.markReady(runtime.dataChannel.getStatus()); dispatch({ type: 'external-sync-status', status: 'ready', now: new Date().toISOString() });
+          if (runtimeConfig.edgeApiBaseUrl) runtime.controlChannel.markReady(runtime.dataChannel.getStatus()); dispatch({ type: 'external-sync-status', status: 'ready', now: new Date().toISOString() });
           await runtime.dataChannel.connect();
         } catch (error) { if (!cancelled) { dispatch({ type: 'external-sync-status', status: 'failed', error: error instanceof Error ? error.message : '连接失败' }); retryTimer = setTimeout(() => { void connect(); }, 5000); } }
       } else { await runtime.dataChannel.connect(); await runtime.controlChannel.connect(); }
@@ -110,7 +110,7 @@ export function useGreenhouseSimulator() {
       const now = new Date().toISOString();
       const command = { id: crypto.randomUUID(), device: key, target: current[key], source: state.controlMode === 'auto' ? 'auto-policy' as const : 'manual' as const, createdAt: now, timeoutAt: new Date(Date.parse(now) + runtimeConfig.requestTimeoutMs).toISOString(), scenario: state.presentation.scenarioId, idempotencyKey: crypto.randomUUID() };
       if (!deviceOnline) continue;
-      dispatch({ type: 'control-command-start', record: { id: command.id, at: now, device: key, target: current[key], status: 'sent', reason: controlReason(key, state.controlMode, state.reading, state.sensors) } });
+      dispatch({ type: 'control-command-start', record: { id: command.id, at: now, device: key, target: current[key], status: 'sent', source: command.source, sourceKind: actuator.sourceKind, reason: controlReason(key, state.controlMode, state.reading, state.sensors) } });
       void runtime.controlChannel.execute(command, deviceOnline).then(result => dispatch({ type: 'control-command-result', key, target: current[key], actual: result.actual, status: result.status, error: result.error, now: new Date().toISOString(), commandId: command.id })).finally(() => dispatch({ type: 'set-channel-status', channel: 'control', status: runtime.controlChannel.getStatus() }));
     }
   }, [state.actuators, state.controlMode, state.devices, state.presentation.scenarioId, state.runtime, state.reading, state.sensors]);

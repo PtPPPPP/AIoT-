@@ -26,12 +26,12 @@ export function createRuntimeChannels(
   const aiInferenceChannel = createAiInferenceChannel(config.mode, config.requestTimeoutMs, nodeConfig);
   if (config.mode === 'external') {
     return {
-      dataChannel: new EdgeGatewayDataChannel(config),
+      dataChannel: new EdgeGatewayDataChannel(config.dataServiceUrl ? { ...config, edgeApiBaseUrl: config.dataServiceUrl } : config),
       controlChannel: new EdgeGatewayControlChannel(config),
       aiInferenceChannel,
       edgeNode: nodeConfig,
       mode: config.mode,
-      dataSourceLabel: config.edgeApiBaseUrl ? '边缘网关' : '边缘网关未配置',
+      dataSourceLabel: config.dataServiceUrl ? '独立数据服务采集缓存' : config.edgeApiBaseUrl ? '边缘网关' : '边缘网关未配置',
       controlSourceLabel: config.edgeApiBaseUrl ? '边缘网关控制通道' : '边缘网关未配置',
     };
   }

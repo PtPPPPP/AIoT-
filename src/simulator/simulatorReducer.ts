@@ -268,7 +268,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
       const previous = state.actuators[action.key];
       const now = action.now ?? state.lastUpdatedAt;
       const failed = ['failed', 'timed_out', 'rejected', 'cancelled'].includes(action.status);
-      const records = state.controlRecords.map(r => r.id === action.commandId ? { ...r, status: action.status, actual: action.actual, error: action.error } : r);
+      const records = state.controlRecords.map(r => r.id === action.commandId ? { ...r, status: action.status, actual: action.actual, error: action.error, completedAt: now, feedbackLevel: 'gateway' as const } : r);
       // Older replies stay in the audit history; they cannot overwrite a newer target.
       if (action.commandId && (previous.commandId !== action.commandId || previous.target !== action.target)) return { ...state, controlRecords: records };
       const actuator = { ...previous, actual: action.actual ?? previous.actual, actualKnown: action.actual === undefined ? previous.actualKnown : true, ...(action.actual === undefined ? {} : { actualUpdatedAt: now, feedbackLevel: 'gateway' as const }), target: action.target, commandStatus: failed ? 'blocked' as const : 'applied' as const, executionStatus: action.status, blockedReason: action.error };
@@ -297,7 +297,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
         actuators[record.device] = { ...actuators[record.device], executionStatus: 'timed_out', commandStatus: 'blocked', blockedReason: '未在等待时限内取得最终回执，实际动作需现场核实' };
         changed = true;
       }
-      const controlRecords = state.controlRecords.map(r => timedOut.includes(r) ? { ...r, status: 'timed_out' as const } : r);
+      const controlRecords = state.controlRecords.map(r => timedOut.includes(r) ? { ...r, status: 'timed_out' as const, completedAt: action.now } : r);
       const devices = state.devices.map(d => d.statusKnown && Date.parse(action.now) - Date.parse(d.updatedAt) > action.staleAfterMs ? { ...d, statusKnown: false } : d);
       if (!changed && devices.every((d, i) => d === state.devices[i])) return state;
       return recalculateControl({ ...state, sensors, reading, devices, actuators, controlRecords }, action.now);
